@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @font-face {
   font-family: 'SUIT';
@@ -35,4 +35,31 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+input[type="range"].range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="range"].range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #4C6FFF;
+  cursor: pointer;
+  border: 2px solid #10131A;
+  box-shadow: 0 0 10px rgba(76, 111, 255, 0.5);
+}
+
+input[type="range"].range-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #4C6FFF;
+  cursor: pointer;
+  border: 2px solid #10131A;
+  box-shadow: 0 0 10px rgba(76, 111, 255, 0.5);
 }

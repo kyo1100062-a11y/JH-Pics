@@ -87,6 +87,43 @@ const useStore = create((set) => ({
     }
   }),
 
+  // 이미지 편집 모달 상태
+  editModal: {
+    isOpen: false,
+    imageUrl: null,
+    slotIndex: null,
+    pageIndex: null,
+    zoom: 1,
+    rotation: 0,
+    crop: { x: 0, y: 0 },
+  },
+  
+  openEditModal: (imageUrl, slotIndex, pageIndex) => set({
+    editModal: {
+      isOpen: true,
+      imageUrl,
+      slotIndex,
+      pageIndex,
+      zoom: 1,
+      rotation: 0,
+      crop: { x: 0, y: 0 },
+    }
+  }),
+  
+  closeEditModal: () => set((state) => ({
+    editModal: {
+      ...state.editModal,
+      isOpen: false,
+    }
+  })),
+  
+  updateEditModal: (updates) => set((state) => ({
+    editModal: {
+      ...state.editModal,
+      ...updates,
+    }
+  })),
+
   // 기존 사용자 및 프로젝트 정보 (호환성 유지)
   user: null,
   setUser: (user) => set({ user }),

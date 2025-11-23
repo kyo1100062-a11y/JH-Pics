@@ -1,12 +1,19 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import A4Canvas from '../components/A4Canvas'
 import useStore from '../store/useStore'
+import { exportToPDF, exportToJPEG } from '../utils/exportUtils'
 
 const EditPage = () => {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
   const urlTemplate = searchParams.get('type')
+  
+  // Canvas refs (각 페이지별)
+  const canvasRefs = useRef({})
+  
+  // 고화질 옵션 상태
+  const [highQuality, setHighQuality] = useState(false)
   
   // Zustand store에서 상태 가져오기
   const {
@@ -33,10 +40,37 @@ const EditPage = () => {
     addPage()
   }
 
-  // 페이지 삭제 (2페이지부터 가능)
-  const handleDeletePage = () => {
-    if (pages.length > 1) {
-      deletePage(currentPageIndex)
+  // PDF 출력 핸들러
+  const handleExportPDF = async () => {
+    try {
+      const canvasElement = canvasRefs.current[currentPageIndex]
+      if (!canvasElement) {
+        alert('Canvas를 찾을 수 없습니다.')
+        return
+      }
+
+      const filename = metadata.title || 'document'
+      await exportToPDF(canvasElement, filename, highQuality)
+    } catch (error) {
+      console.error('PDF 출력 실패:', error)
+      alert('PDF 출력에 실패했습니다.')
+    }
+  }
+
+  // JPEG 출력 핸들러
+  const handleExportJPEG = async () => {
+    try {
+      const canvasElement = canvasRefs.current[currentPageIndex]
+      if (!canvasElement) {
+        alert('Canvas를 찾을 수 없습니다.')
+        return
+      }
+
+      const filename = metadata.title || 'document'
+      await exportToJPEG(canvasElement, filename, highQuality)
+    } catch (error) {
+      console.error('JPEG 출력 실패:', error)
+      alert('JPEG 출력에 실패했습니다.')
     }
   }
 
@@ -103,55 +137,71 @@ const EditPage = () => {
         </div>
       </div>
 
+      {/* 페이지 탭 영역 */}
+      <div className="mb-6 bg-deep-blue border-2 border-soft-blue/50 rounded-button-lg p-4">
+        <div className="flex items-center gap-2 overflow-x-auto">
+          {/* 페이지 탭들 */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {pages.map((page, index) => (
+              <div
+                key={index}
+                className={`group relative flex items-center gap-2 px-4 py-2.5 rounded-button text-sm font-semibold transition-all cursor-pointer min-w-fit ${
+                  currentPageIndex === index
+                    ? 'bg-primary text-white shadow-glow'
+                    : 'bg-deep-blue/50 border-2 border-soft-blue/30 text-soft-blue hover:border-primary hover:bg-soft-blue/10'
+                }`}
+                onClick={() => setCurrentPage(index)}
+              >
+                <span>페이지 {index + 1}</span>
+                {/* 삭제 버튼 (2페이지 이상일 때만 표시) */}
+                {pages.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deletePage(index)
+                    }}
+                    className={`ml-1 p-0.5 rounded transition-all ${
+                      currentPageIndex === index
+                        ? 'hover:bg-white/20 text-white'
+                        : 'hover:bg-soft-blue/20 text-soft-blue/70'
+                    }`}
+                    title="페이지 삭제"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          {/* 페이지 추가 버튼 */}
+          <button
+            onClick={handleAddPage}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary/10 border-2 border-primary/30 text-primary rounded-button hover:bg-primary/20 hover:shadow-glow transition-all font-semibold whitespace-nowrap"
+            title="페이지 추가"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span className="hidden sm:inline">추가</span>
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
         {/* 왼쪽: A4 Canvas 영역 */}
         <div className="flex-1">
-          {/* 페이지 인디케이터 */}
-          <div className="flex items-center justify-center gap-2 mb-4">
-            {pages.map((page, index) => (
-              <button
-                key={index}
-                onClick={() => setCurrentPage(index)}
-                className={`px-4 py-2 rounded-button text-sm font-semibold transition-all ${
-                  currentPageIndex === index
-                    ? 'bg-primary text-white shadow-glow'
-                    : 'bg-deep-blue border-2 border-soft-blue/50 text-soft-blue hover:border-primary'
-                }`}
-              >
-                {index + 1}페이지
-              </button>
-            ))}
-          </div>
 
           {/* A4 Canvas */}
-          <A4Canvas layoutType={currentTemplate} pageIndex={currentPageIndex} />
-
-          {/* 페이지 관리 버튼 */}
-          <div className="flex items-center justify-center gap-4 mt-4">
-            <button
-              onClick={handleAddPage}
-              className="px-6 py-2.5 bg-primary/10 border-2 border-primary/30 text-primary rounded-button hover:bg-primary/20 hover:shadow-glow transition-all font-semibold flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              페이지 추가
-            </button>
-            <button
-              onClick={handleDeletePage}
-              disabled={pages.length <= 1}
-              className={`px-6 py-2.5 rounded-button font-semibold flex items-center gap-2 transition-all ${
-                pages.length <= 1
-                  ? 'bg-deep-blue/50 border-2 border-soft-blue/20 text-soft-blue/30 cursor-not-allowed'
-                  : 'bg-red-500/10 border-2 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:shadow-glow'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              페이지 삭제
-            </button>
-          </div>
+          <A4Canvas 
+            ref={(el) => {
+              canvasRefs.current[currentPageIndex] = el
+            }}
+            layoutType={currentTemplate} 
+            pageIndex={currentPageIndex} 
+          />
         </div>
 
         {/* 오른쪽: 출력 및 저장 버튼 */}
@@ -171,13 +221,19 @@ const EditPage = () => {
           <div className="bg-deep-blue border-2 border-soft-blue/50 rounded-button-lg p-4">
             <h3 className="text-sm font-semibold text-soft-blue mb-3">출력 옵션</h3>
             <div className="space-y-3">
-              <button className="w-full px-6 py-3 bg-soft-blue/10 border-2 border-soft-blue/50 text-soft-blue rounded-button hover:border-primary hover:bg-primary/10 hover:text-primary hover:shadow-glow transition-all font-semibold flex items-center justify-center gap-2">
+              <button 
+                onClick={handleExportPDF}
+                className="w-full px-6 py-3 bg-soft-blue/10 border-2 border-soft-blue/50 text-soft-blue rounded-button hover:border-primary hover:bg-primary/10 hover:text-primary hover:shadow-glow transition-all font-semibold flex items-center justify-center gap-2"
+              >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
                 PDF 출력
               </button>
-              <button className="w-full px-6 py-3 bg-soft-blue/10 border-2 border-soft-blue/50 text-soft-blue rounded-button hover:border-primary hover:bg-primary/10 hover:text-primary hover:shadow-glow transition-all font-semibold flex items-center justify-center gap-2">
+              <button 
+                onClick={handleExportJPEG}
+                className="w-full px-6 py-3 bg-soft-blue/10 border-2 border-soft-blue/50 text-soft-blue rounded-button hover:border-primary hover:bg-primary/10 hover:text-primary hover:shadow-glow transition-all font-semibold flex items-center justify-center gap-2"
+              >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
@@ -185,7 +241,12 @@ const EditPage = () => {
               </button>
               <div className="pt-2 border-t border-soft-blue/20">
                 <label className="flex items-center gap-2 text-sm text-soft-blue cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4 rounded border-soft-blue/50 bg-deep-blue text-primary focus:ring-primary focus:ring-offset-0" />
+                  <input 
+                    type="checkbox" 
+                    checked={highQuality}
+                    onChange={(e) => setHighQuality(e.target.checked)}
+                    className="w-4 h-4 rounded border-soft-blue/50 bg-deep-blue text-primary focus:ring-primary focus:ring-offset-0" 
+                  />
                   <span>고화질 옵션</span>
                 </label>
               </div>
