@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import A4Canvas from '../components/A4Canvas'
 import useStore from '../store/useStore'
-import { exportToPDF, exportToJPEG } from '../utils/exportUtils'
+import { exportToPDF, exportToJPEG, exportAllPagesToPDF } from '../utils/exportUtils'
 
 const EditPage = () => {
   const { id } = useParams()
@@ -50,24 +50,24 @@ const EditPage = () => {
     return parts.length > 0 ? parts.join('-') : 'document'
   }
 
-  // PDF 출력 핸들러
+  // PDF 출력 핸들러 - 모든 페이지 출력
   const handleExportPDF = async () => {
     try {
-      const canvasElement = canvasRefs.current[currentPageIndex]
-      if (!canvasElement) {
+      const canvasElements = pages.map((_, idx) => canvasRefs.current[idx]).filter(Boolean)
+      if (canvasElements.length === 0) {
         alert('Canvas를 찾을 수 없습니다.')
         return
       }
 
       const filename = generateFilename()
-      await exportToPDF(canvasElement, filename, highQuality, currentTemplate)
+      await exportAllPagesToPDF(canvasElements, filename, highQuality, currentTemplate)
     } catch (error) {
       console.error('PDF 출력 실패:', error)
       alert('PDF 출력에 실패했습니다.')
     }
   }
 
-  // JPEG 출력 핸들러
+  // JPEG 출력 핸들러 - 현재 페이지만 출력
   const handleExportJPEG = async () => {
     try {
       const canvasElement = canvasRefs.current[currentPageIndex]

@@ -306,32 +306,8 @@ export const getCroppedImgFromPixels = async (imageSrc, pixelCrop, rotation = 0,
       const imageWidth = image.naturalWidth
       const imageHeight = image.naturalHeight
 
-      // 회전을 고려한 캔버스 크기 계산
-      const rotRad = (rotation * Math.PI) / 180
-      const { width: bBoxWidth, height: bBoxHeight } = rotateSize(
-        imageWidth,
-        imageHeight,
-        rotation
-      )
-
-      // 회전된 이미지를 그릴 캔버스
-      const rotatedCanvas = document.createElement('canvas')
-      rotatedCanvas.width = bBoxWidth
-      rotatedCanvas.height = bBoxHeight
-      const rotatedCtx = rotatedCanvas.getContext('2d')
-
-      if (!rotatedCtx) {
-        reject(new Error('Rotated canvas context를 가져올 수 없습니다.'))
-        return
-      }
-
-      // 회전 중심으로 이동하여 이미지 그리기
-      rotatedCtx.translate(bBoxWidth / 2, bBoxHeight / 2)
-      rotatedCtx.rotate(rotRad)
-      rotatedCtx.translate(-imageWidth / 2, -imageHeight / 2)
-      rotatedCtx.drawImage(image, 0, 0)
-
-      // 크롭된 영역을 추출할 캔버스
+      // croppedAreaPixels는 원본 이미지 기준 좌표이므로, 먼저 원본에서 크롭한 후 회전 적용
+      // 1단계: 원본 이미지에서 크롭 영역 추출
       const croppedCanvas = document.createElement('canvas')
       croppedCanvas.width = pixelCrop.width
       croppedCanvas.height = pixelCrop.height
@@ -342,14 +318,11 @@ export const getCroppedImgFromPixels = async (imageSrc, pixelCrop, rotation = 0,
         return
       }
 
-      // 회전된 이미지에서 크롭 영역 추출
-      const offsetX = (bBoxWidth - imageWidth) / 2
-      const offsetY = (bBoxHeight - imageHeight) / 2
-      
+      // 원본 이미지에서 크롭 영역 추출
       croppedCtx.drawImage(
-        rotatedCanvas,
-        pixelCrop.x + offsetX,
-        pixelCrop.y + offsetY,
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
         pixelCrop.width,
         pixelCrop.height,
         0,
@@ -358,9 +331,40 @@ export const getCroppedImgFromPixels = async (imageSrc, pixelCrop, rotation = 0,
         pixelCrop.height
       )
 
-      // base64로 변환
-      const base64 = croppedCanvas.toDataURL('image/jpeg', quality)
-      resolve(base64)
+      // 2단계: 회전이 있는 경우 회전 적용
+      if (rotation !== 0) {
+        const rotRad = (rotation * Math.PI) / 180
+        const { width: rotatedWidth, height: rotatedHeight } = rotateSize(
+          pixelCrop.width,
+          pixelCrop.height,
+          rotation
+        )
+
+        // 회전된 이미지를 그릴 캔버스
+        const rotatedCanvas = document.createElement('canvas')
+        rotatedCanvas.width = rotatedWidth
+        rotatedCanvas.height = rotatedHeight
+        const rotatedCtx = rotatedCanvas.getContext('2d')
+
+        if (!rotatedCtx) {
+          reject(new Error('Rotated canvas context를 가져올 수 없습니다.'))
+          return
+        }
+
+        // 회전 중심으로 이동하여 크롭된 이미지 그리기
+        rotatedCtx.translate(rotatedWidth / 2, rotatedHeight / 2)
+        rotatedCtx.rotate(rotRad)
+        rotatedCtx.translate(-pixelCrop.width / 2, -pixelCrop.height / 2)
+        rotatedCtx.drawImage(croppedCanvas, 0, 0)
+
+        // 회전된 이미지를 base64로 변환
+        const base64 = rotatedCanvas.toDataURL('image/jpeg', quality)
+        resolve(base64)
+      } else {
+        // 회전이 없는 경우 크롭된 이미지만 base64로 변환
+        const base64 = croppedCanvas.toDataURL('image/jpeg', quality)
+        resolve(base64)
+      }
     }
 
     image.onerror = () => {

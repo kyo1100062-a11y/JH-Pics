@@ -2,66 +2,55 @@ import { Fragment, useState, useCallback, useEffect } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import Cropper from 'react-easy-crop'
 import useStore from '../store/useStore'
-import { getCroppedImgFromPixels } from '../utils/imageUtils'
+import { applyImageEdits } from '../hooks/useImageEditor'
 
 /**
- * 이미지 편집 모달 컴포넌트
- * react-easy-crop을 사용한 실제 크롭 기능 포함
+ * 이미지 크롭 모달 컴포넌트
+ * UI만 담당, 모든 편집 상태는 모달 내부에서 관리
  */
-const ImageEditModal = () => {
-  const { editModal, closeEditModal, updateEditModal, setImage } = useStore()
-  const { isOpen, imageUrl, slotIndex, pageIndex, zoom, rotation, crop } = editModal
+const ImageCropModal = () => {
+  const { editModal, closeEditModal, setImage } = useStore()
+  const { isOpen, imageUrl, slotIndex, pageIndex } = editModal
   
+  // 모달 내부 상태 관리 (저장 시에만 외부 store로 반영)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [rotation, setRotation] = useState(0)
+  const [cropAreaPixels, setCropAreaPixels] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [cropArea, setCropArea] = useState(null)
-  const [localZoom, setLocalZoom] = useState(zoom || 1)
-  const [localRotation, setLocalRotation] = useState(rotation || 0)
-  const [localCrop, setLocalCrop] = useState(crop || { x: 0, y: 0 })
 
   // 모달이 열릴 때 초기화
   useEffect(() => {
     if (isOpen && imageUrl) {
-      setCropArea(null)
-      setLocalZoom(zoom || 1)
-      setLocalRotation(rotation || 0)
-      setLocalCrop(crop || { x: 0, y: 0 })
+      // 항상 원본 이미지 기준으로 초기화
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setRotation(0)
+      setCropAreaPixels(null)
     }
-  }, [isOpen, imageUrl, zoom, rotation, crop])
+  }, [isOpen, imageUrl])
 
-  // 슬라이더 값 변경 핸들러 - 로컬 상태와 전역 상태 모두 업데이트
-  const handleZoomChange = useCallback((value) => {
-    const newZoom = Math.max(0.5, Math.min(3, value))
-    setLocalZoom(newZoom)
-    updateEditModal({ zoom: newZoom })
-  }, [updateEditModal])
-
-  const handleRotationChange = useCallback((value) => {
-    const newRotation = Math.max(0, Math.min(360, value))
-    setLocalRotation(newRotation)
-    updateEditModal({ rotation: newRotation })
-  }, [updateEditModal])
-
-  // 크롭 영역 변경 핸들러 (react-easy-crop의 onCropChange)
+  // 크롭 영역 변경 핸들러
   const handleCropChange = useCallback((newCrop) => {
-    setLocalCrop(newCrop)
-    updateEditModal({ crop: newCrop })
-  }, [updateEditModal])
-
-  // 크롭 완료 핸들러 (react-easy-crop의 onCropComplete)
-  const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
-    // croppedAreaPixels 저장 (최종 크롭 영역 픽셀 좌표)
-    setCropArea(croppedAreaPixels)
+    setCrop(newCrop)
   }, [])
 
-  // Cropper에서 직접 zoom 변경 시
-  const handleCropperZoomChange = useCallback((newZoom) => {
-    handleZoomChange(newZoom)
-  }, [handleZoomChange])
+  // 크롭 완료 핸들러 (croppedAreaPixels 저장)
+  const handleCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
+    setCropAreaPixels(croppedAreaPixels)
+  }, [])
 
-  // Cropper에서 직접 rotation 변경 시
-  const handleCropperRotationChange = useCallback((newRotation) => {
-    handleRotationChange(newRotation)
-  }, [handleRotationChange])
+  // 줌 변경 핸들러
+  const handleZoomChange = useCallback((newZoom) => {
+    const clampedZoom = Math.max(0.5, Math.min(3, newZoom))
+    setZoom(clampedZoom)
+  }, [])
+
+  // 회전 변경 핸들러
+  const handleRotationChange = useCallback((newRotation) => {
+    const clampedRotation = Math.max(0, Math.min(360, newRotation))
+    setRotation(clampedRotation)
+  }, [])
 
   // 저장 버튼 핸들러
   const handleSave = async () => {
@@ -69,7 +58,7 @@ const ImageEditModal = () => {
       return
     }
 
-    if (!cropArea) {
+    if (!cropAreaPixels) {
       alert('크롭 영역을 선택해주세요.')
       return
     }
@@ -77,33 +66,41 @@ const ImageEditModal = () => {
     setIsSaving(true)
 
     try {
-      // 크롭된 이미지 생성 (cropArea를 직접 사용)
-      const croppedImageUrl = await getCroppedImgFromPixels(
-        imageUrl,
-        cropArea,
+      // slotIndex 타입 일치 확인 (숫자로 변환)
+      const normalizedSlotIndex = typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
+      
+      // 원본 이미지 URL 가져오기
+      const storeState = useStore.getState()
+      const page = storeState.pages.find(p => p.pageIndex === pageIndex)
+      const existingSlot = page?.slots.find(slot => {
+        const slotIdx = typeof slot.slotIndex === 'number' ? slot.slotIndex : Number(slot.slotIndex)
+        return slotIdx === normalizedSlotIndex
+      })
+      const originalUrl = existingSlot?.originalUrl || imageUrl
+
+      // 편집된 이미지 생성 (원본 기준)
+      const editedImageUrl = await applyImageEdits(
+        originalUrl,
+        cropAreaPixels,
+        zoom,
         rotation,
         0.9
       )
 
-      // Zustand store에 저장 (원본 이미지 URL 유지)
-      // imageUrl은 원본 이미지이므로 originalUrl로 저장
-      const storeState = useStore.getState()
-      const existingImage = storeState.images.find(
-        img => img.pageIndex === pageIndex && img.slotIndex === slotIndex
-      )
-      const originalUrl = existingImage?.originalUrl || imageUrl
-      
-      setImage(pageIndex, slotIndex, croppedImageUrl, '', originalUrl)
+      // 편집된 이미지만 저장, 원본은 유지
+      setImage(pageIndex, normalizedSlotIndex, editedImageUrl, '', originalUrl)
       
       // 모달 닫기
       closeEditModal()
     } catch (error) {
-      console.error('이미지 크롭 실패:', error)
-      alert('이미지 크롭에 실패했습니다.')
+      console.error('이미지 편집 실패:', error)
+      alert('이미지 편집에 실패했습니다.')
     } finally {
       setIsSaving(false)
     }
   }
+
+  if (!isOpen) return null
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -118,7 +115,7 @@ const ImageEditModal = () => {
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+          <div className="fixed inset-0 bg-black/50" />
         </Transition.Child>
 
         {/* 모달 컨테이너 */}
@@ -133,22 +130,17 @@ const ImageEditModal = () => {
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-button-lg bg-deep-blue border-2 border-soft-blue/50 shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-deep-blue p-6 shadow-xl transition-all">
                 {/* 헤더 */}
-                <div className="flex items-center justify-between p-6 border-b border-soft-blue/20">
-                  <Dialog.Title className="text-xl font-bold text-soft-blue">
+                <div className="mb-4 flex items-center justify-between">
+                  <Dialog.Title className="text-xl font-bold text-white">
                     이미지 편집
                   </Dialog.Title>
                   <button
                     onClick={closeEditModal}
-                    className="p-2 hover:bg-soft-blue/10 rounded-button transition-colors"
+                    className="rounded-lg p-2 text-white hover:bg-soft-blue/20 transition-colors"
                   >
-                    <svg 
-                      className="w-6 h-6 text-soft-blue" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path 
                         strokeLinecap="round" 
                         strokeLinejoin="round" 
@@ -160,18 +152,18 @@ const ImageEditModal = () => {
                 </div>
 
                 {/* react-easy-crop 영역 */}
-                <div className="relative bg-deep-blue/50" style={{ height: '400px' }}>
+                <div className="relative bg-deep-blue/50 mb-6" style={{ height: '400px' }}>
                   {imageUrl ? (
                     <Cropper
                       image={imageUrl}
-                      crop={localCrop}
-                      zoom={localZoom}
-                      rotation={localRotation}
+                      crop={crop}
+                      zoom={zoom}
+                      rotation={rotation}
                       aspect={undefined}
                       onCropChange={handleCropChange}
-                      onCropComplete={onCropComplete}
-                      onZoomChange={handleCropperZoomChange}
-                      onRotationChange={handleCropperRotationChange}
+                      onCropComplete={handleCropComplete}
+                      onZoomChange={handleZoomChange}
+                      onRotationChange={handleRotationChange}
                       cropShape="rect"
                       showGrid={false}
                       restrictPosition={false}
@@ -207,7 +199,7 @@ const ImageEditModal = () => {
                         확대/축소
                       </label>
                       <span className="text-sm text-soft-blue/70 font-medium">
-                        {Math.round(localZoom * 100)}%
+                        {Math.round(zoom * 100)}%
                       </span>
                     </div>
                     <div className="relative">
@@ -216,11 +208,11 @@ const ImageEditModal = () => {
                         min="0.5"
                         max="3"
                         step="0.05"
-                        value={localZoom}
+                        value={zoom}
                         onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
                         className="w-full h-2 bg-soft-blue/20 rounded-lg appearance-none cursor-pointer range-slider"
                         style={{
-                          background: `linear-gradient(to right, #4C6FFF 0%, #4C6FFF ${((localZoom - 0.5) / 2.5) * 100}%, rgba(168, 183, 245, 0.2) ${((localZoom - 0.5) / 2.5) * 100}%, rgba(168, 183, 245, 0.2) 100%)`
+                          background: `linear-gradient(to right, #4C6FFF 0%, #4C6FFF ${((zoom - 0.5) / 2.5) * 100}%, rgba(168, 183, 245, 0.2) ${((zoom - 0.5) / 2.5) * 100}%, rgba(168, 183, 245, 0.2) 100%)`
                         }}
                       />
                     </div>
@@ -247,42 +239,30 @@ const ImageEditModal = () => {
                         step="1"
                         value={rotation}
                         onChange={(e) => handleRotationChange(parseInt(e.target.value))}
-                        className="w-full h-2 bg-soft-blue/20 rounded-lg appearance-none cursor-pointer"
+                        className="w-full h-2 bg-soft-blue/20 rounded-lg appearance-none cursor-pointer range-slider"
                         style={{
                           background: `linear-gradient(to right, #4C6FFF 0%, #4C6FFF ${(rotation / 360) * 100}%, rgba(168, 183, 245, 0.2) ${(rotation / 360) * 100}%, rgba(168, 183, 245, 0.2) 100%)`
                         }}
                       />
                     </div>
                   </div>
-                </div>
 
-                {/* 하단 버튼 */}
-                <div className="flex items-center justify-end gap-3 p-6 border-t border-soft-blue/20">
-                  <button
-                    onClick={closeEditModal}
-                    className="px-6 py-2.5 bg-deep-blue border-2 border-soft-blue/50 text-soft-blue rounded-button hover:border-primary hover:text-primary transition-all font-semibold"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className={`px-6 py-2.5 bg-primary text-white rounded-button hover:bg-primary/90 hover:shadow-glow transition-all font-semibold flex items-center gap-2 ${
-                      isSaving ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {isSaving ? (
-                      <>
-                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        저장 중...
-                      </>
-                    ) : (
-                      '저장'
-                    )}
-                  </button>
+                  {/* 저장/취소 버튼 */}
+                  <div className="flex justify-end gap-3 pt-4 border-t border-soft-blue/20">
+                    <button
+                      onClick={closeEditModal}
+                      className="px-6 py-2 bg-gray-500/20 text-white rounded-button hover:bg-gray-500/30 transition-all font-semibold"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="px-6 py-2 bg-primary text-white rounded-button hover:bg-primary/90 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSaving ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
                 </div>
               </Dialog.Panel>
             </Transition.Child>
@@ -293,5 +273,5 @@ const ImageEditModal = () => {
   )
 }
 
-export default ImageEditModal
+export default ImageCropModal
 

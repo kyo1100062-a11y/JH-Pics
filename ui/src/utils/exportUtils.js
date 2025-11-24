@@ -21,26 +21,77 @@ export const exportToPDF = async (canvasElement, filename = 'document', highQual
   }
 
   try {
-    // 출력 시 이미지가 없는 슬롯 숨기기
+    // 출력 시 UI 요소 숨기기
     const emptySlots = canvasElement.querySelectorAll('.export-exclude')
+    const controlElements = canvasElement.querySelectorAll('.export-control')
+    
+    // 빈 슬롯 숨기기
     emptySlots.forEach(slot => {
       slot.style.display = 'none'
     })
     
-    // html2canvas 옵션 설정
+    // 컨트롤 요소 숨기기 (삭제 버튼, 리사이즈 핸들, 슬롯 추가 버튼 등)
+    controlElements.forEach(element => {
+      element.style.display = 'none'
+    })
+    
+    // html2canvas 옵션 설정 - padding, border 포함하여 정확한 크기 계산
     const scale = highQuality ? 3 : 2 // 고화질: 3배, 일반: 2배
+    
+    // 실제 크기 계산 (padding, border 포함)
+    const computedStyle = window.getComputedStyle(canvasElement)
+    const rect = canvasElement.getBoundingClientRect()
+    
+    // padding 계산 (mm 단위를 px로 변환: 1mm ≈ 3.779527559px @ 96dpi)
+    const mmToPx = 3.779527559
+    const paddingValue = parseFloat(computedStyle.padding) || 0
+    const paddingPx = paddingValue > 10 ? paddingValue : paddingValue * mmToPx // 이미 px면 그대로, mm면 변환
+    
+    const paddingTop = parseFloat(computedStyle.paddingTop) || paddingPx
+    const paddingBottom = parseFloat(computedStyle.paddingBottom) || paddingPx
+    const paddingLeft = parseFloat(computedStyle.paddingLeft) || paddingPx
+    const paddingRight = parseFloat(computedStyle.paddingRight) || paddingPx
+    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0
+    const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0
+    const borderRight = parseFloat(computedStyle.borderRightWidth) || 0
+    
+    // 실제 요소 크기 (getBoundingClientRect 사용)
+    const elementWidth = rect.width
+    const elementHeight = rect.height
+    
+    // html2canvas 캡처 옵션 - 정확한 위치 보정
     const canvas = await html2canvas(canvasElement, {
       scale: scale,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      width: canvasElement.scrollWidth,
-      height: canvasElement.scrollHeight,
+      width: elementWidth,
+      height: elementHeight,
+      x: 0,
+      y: 0,
+      scrollX: -window.scrollX,
+      scrollY: -window.scrollY,
+      allowTaint: false,
+      removeContainer: false,
+      onclone: (clonedDoc) => {
+        // 복제된 문서에서 transform-origin 적용
+        const clonedElement = clonedDoc.querySelector(`[data-a4-canvas="true"]`) || 
+                             Array.from(clonedDoc.querySelectorAll('*')).find(el => 
+                               el.getAttribute('style')?.includes('transform-origin')
+                             )
+        if (clonedElement) {
+          clonedElement.style.transformOrigin = 'center center'
+        }
+      },
     })
     
-    // 숨긴 슬롯 다시 표시
+    // 숨긴 요소들 다시 표시
     emptySlots.forEach(slot => {
       slot.style.display = ''
+    })
+    controlElements.forEach(element => {
+      element.style.display = ''
     })
 
     // Type 6컷의 경우 landscape 모드
@@ -55,8 +106,9 @@ export const exportToPDF = async (canvasElement, filename = 'document', highQual
       format: [a4Width, a4Height],
     })
 
-    // A4 출력 시 여백 20mm 적용
-    const margin = 20
+    // A4 출력 시 여백 적용 (상/하/좌/우 모두 동일하게 통일)
+    // 예시 이미지의 상단 여백 정도를 기준으로 설정 (약 15mm)
+    const margin = 15
     const contentWidth = a4Width - (margin * 2)
     const contentHeight = a4Height - (margin * 2)
     
@@ -73,7 +125,7 @@ export const exportToPDF = async (canvasElement, filename = 'document', highQual
       finalWidth = (canvas.width * contentHeight) / canvas.height
     }
     
-    // 이미지를 여백을 고려하여 배치
+    // 이미지를 여백을 고려하여 배치 (중앙 정렬)
     const x = margin + (contentWidth - finalWidth) / 2
     const y = margin + (contentHeight - finalHeight) / 2
 
@@ -102,26 +154,60 @@ export const exportToJPEG = async (canvasElement, filename = 'document', highQua
   }
 
   try {
-    // 출력 시 이미지가 없는 슬롯 숨기기
+    // 출력 시 UI 요소 숨기기
     const emptySlots = canvasElement.querySelectorAll('.export-exclude')
+    const controlElements = canvasElement.querySelectorAll('.export-control')
+    
+    // 빈 슬롯 숨기기
     emptySlots.forEach(slot => {
       slot.style.display = 'none'
     })
     
+    // 컨트롤 요소 숨기기
+    controlElements.forEach(element => {
+      element.style.display = 'none'
+    })
+    
     // html2canvas 옵션 설정
-    const scale = highQuality ? 3 : 2 // 고화질: 3배, 일반: 2배
+    const scale = highQuality ? 3 : 2
+    
+    // 실제 크기 계산 (getBoundingClientRect 사용)
+    const rect = canvasElement.getBoundingClientRect()
+    const elementWidth = rect.width
+    const elementHeight = rect.height
+    
+    // html2canvas 캡처 옵션 - 정확한 위치 보정
     const canvas = await html2canvas(canvasElement, {
       scale: scale,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      width: canvasElement.scrollWidth,
-      height: canvasElement.scrollHeight,
+      width: elementWidth,
+      height: elementHeight,
+      x: 0,
+      y: 0,
+      scrollX: -window.scrollX,
+      scrollY: -window.scrollY,
+      allowTaint: false,
+      removeContainer: false,
+      onclone: (clonedDoc) => {
+        // 복제된 문서에서 transform-origin 적용
+        const clonedElement = clonedDoc.querySelector(`[data-a4-canvas="true"]`) || 
+                             Array.from(clonedDoc.querySelectorAll('*')).find(el => 
+                               el.getAttribute('style')?.includes('transform-origin')
+                             )
+        if (clonedElement) {
+          clonedElement.style.transformOrigin = 'center center'
+        }
+      },
     })
     
-    // 숨긴 슬롯 다시 표시
+    // 숨긴 요소들 다시 표시
     emptySlots.forEach(slot => {
       slot.style.display = ''
+    })
+    controlElements.forEach(element => {
+      element.style.display = ''
     })
 
     // JPEG로 변환하여 다운로드
@@ -141,25 +227,48 @@ export const exportToJPEG = async (canvasElement, filename = 'document', highQua
  * @param {Array<HTMLElement>} canvasElements - A4Canvas DOM 요소 배열
  * @param {string} filename - 파일명 (기본값: 'document')
  * @param {boolean} highQuality - 고화질 옵션 (기본값: false)
+ * @param {string} layoutType - 템플릿 타입 (기본값: '4cut')
  * @returns {Promise<void>}
  */
-export const exportAllPagesToPDF = async (canvasElements, filename = 'document', highQuality = false) => {
+export const exportAllPagesToPDF = async (canvasElements, filename = 'document', highQuality = false, layoutType = '4cut') => {
   if (!canvasElements || canvasElements.length === 0) {
     throw new Error('Canvas 요소를 찾을 수 없습니다.')
   }
 
   try {
+    // Type 6컷의 경우 landscape 모드
+    const isLandscape = layoutType === '6cut'
+    const a4Width = isLandscape ? A4_HEIGHT_MM : A4_WIDTH_MM
+    const a4Height = isLandscape ? A4_WIDTH_MM : A4_HEIGHT_MM
+
     const pdf = new jsPDF({
-      orientation: 'portrait',
+      orientation: isLandscape ? 'landscape' : 'portrait',
       unit: 'mm',
-      format: [A4_WIDTH_MM, A4_HEIGHT_MM],
+      format: [a4Width, a4Height],
     })
 
     const scale = highQuality ? 3 : 2
+    const margin = 15 // 상/하/좌/우 동일한 여백
 
     for (let i = 0; i < canvasElements.length; i++) {
       const canvasElement = canvasElements[i]
       if (!canvasElement) continue
+
+      // 출력 시 UI 요소 숨기기
+      const emptySlots = canvasElement.querySelectorAll('.export-exclude')
+      const controlElements = canvasElement.querySelectorAll('.export-control')
+      
+      emptySlots.forEach(slot => {
+        slot.style.display = 'none'
+      })
+      controlElements.forEach(element => {
+        element.style.display = 'none'
+      })
+
+      // 실제 크기 계산
+      const rect = canvasElement.getBoundingClientRect()
+      const elementWidth = rect.width
+      const elementHeight = rect.height
 
       // 각 페이지를 캡처
       const canvas = await html2canvas(canvasElement, {
@@ -167,17 +276,53 @@ export const exportAllPagesToPDF = async (canvasElements, filename = 'document',
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
-        width: canvasElement.scrollWidth,
-        height: canvasElement.scrollHeight,
+        width: elementWidth,
+        height: elementHeight,
+        x: 0,
+        y: 0,
+        scrollX: -window.scrollX,
+        scrollY: -window.scrollY,
+        allowTaint: false,
+        removeContainer: false,
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.querySelector(`[data-a4-canvas="true"]`) || 
+                               Array.from(clonedDoc.querySelectorAll('*')).find(el => 
+                                 el.getAttribute('style')?.includes('transform-origin')
+                               )
+          if (clonedElement) {
+            clonedElement.style.transformOrigin = 'center center'
+          }
+        },
       })
 
-      // A4 비율 계산
-      const imgWidth = A4_WIDTH_MM
-      const imgHeight = (canvas.height * A4_WIDTH_MM) / canvas.width
+      // 숨긴 요소들 다시 표시
+      emptySlots.forEach(slot => {
+        slot.style.display = ''
+      })
+      controlElements.forEach(element => {
+        element.style.display = ''
+      })
 
-      // 이미지가 A4 높이를 초과하면 조정
-      const finalHeight = imgHeight > A4_HEIGHT_MM ? A4_HEIGHT_MM : imgHeight
-      const finalWidth = (canvas.width * finalHeight) / canvas.height
+      // A4 출력 시 여백 적용
+      const contentWidth = a4Width - (margin * 2)
+      const contentHeight = a4Height - (margin * 2)
+      
+      // 이미지 크기를 여백을 고려하여 조정
+      let finalWidth, finalHeight
+      const contentAspectRatio = contentWidth / contentHeight
+      const canvasAspectRatio = canvas.width / canvas.height
+      
+      if (canvasAspectRatio > contentAspectRatio) {
+        finalWidth = contentWidth
+        finalHeight = (canvas.height * contentWidth) / canvas.width
+      } else {
+        finalHeight = contentHeight
+        finalWidth = (canvas.width * contentHeight) / canvas.height
+      }
+      
+      // 이미지를 여백을 고려하여 배치 (중앙 정렬)
+      const x = margin + (contentWidth - finalWidth) / 2
+      const y = margin + (contentHeight - finalHeight) / 2
 
       // PDF에 이미지 추가
       const imgData = canvas.toDataURL('image/jpeg', highQuality ? 1.0 : 0.95)
@@ -186,7 +331,7 @@ export const exportAllPagesToPDF = async (canvasElements, filename = 'document',
         pdf.addPage()
       }
       
-      pdf.addImage(imgData, 'JPEG', 0, 0, finalWidth, finalHeight, undefined, 'FAST')
+      pdf.addImage(imgData, 'JPEG', x, y, finalWidth, finalHeight, undefined, 'FAST')
     }
 
     // PDF 다운로드

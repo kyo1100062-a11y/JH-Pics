@@ -1,7 +1,7 @@
-import { useRef, useCallback, forwardRef, useState } from 'react'
+import { useRef, useCallback, forwardRef, useState, useEffect } from 'react'
 import useStore from '../store/useStore'
-import { resizeImageToBase64 } from '../utils/imageUtils'
-import ImageEditModal from './ImageEditModal'
+import { resizeImage } from '../hooks/useImageEditor'
+import ImageCropModal from './ImageCropModal'
 
 const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, ref) => {
   // A4 비율: 210mm × 297mm (약 1:1.414)
@@ -30,13 +30,17 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
   }
 
   // Zustand store
-  const { images, setImage, removeImage, setImageDescription, openEditModal, metadata, customSlots, addCustomSlot, removeCustomSlot, updateCustomSlotSize } = useStore()
+  const { pages, setImage, removeImage, setImageDescription, openEditModal, metadata, customSlots, addCustomSlot, removeCustomSlot, updateCustomSlotSize } = useStore()
   
   // 보조설명 편집 상태
   const [editingDescription, setEditingDescription] = useState(null)
   
   // 슬롯 크기 편집 상태
   const [editingSlotSize, setEditingSlotSize] = useState(null)
+  
+  // 드래그 리사이즈 상태
+  const [resizingSlot, setResizingSlot] = useState(null)
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 })
   
   // 파일 input ref
   const fileInputRefs = useRef({})
@@ -45,13 +49,129 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
   const slotsToRender = layoutType === 'custom' 
     ? ((customSlots && customSlots[pageIndex]) || [])
     : Array.from({ length: actualSlotCount }).map((_, i) => ({ id: i, index: i }))
+  
+  // 드래그 리사이즈 핸들러
+  const handleResizeStart = useCallback((e, slotIndex, direction) => {
+    e.stopPropagation()
+    const slot = slotsToRender.find(s => (layoutType === 'custom' ? s.id : slotsToRender.indexOf(s)) === slotIndex)
+    if (!slot) return
+    
+    setResizingSlot({ slotIndex, direction })
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: slot.width || 1,
+      height: slot.height || 1
+    })
+  }, [slotsToRender, layoutType])
+  
+  const handleResizeMove = useCallback((e) => {
+    if (!resizingSlot) return
+    
+    const deltaX = e.clientX - resizeStart.x
+    const deltaY = e.clientY - resizeStart.y
+    
+    // 그리드 컨테이너 크기 기준으로 계산
+    const gridContainer = e.target.closest('.grid')
+    if (!gridContainer) return
+    
+    const containerWidth = gridContainer.offsetWidth
+    const containerHeight = gridContainer.offsetHeight
+    
+    // 그리드 열/행 개수 계산
+    const gridCols = Math.ceil(Math.sqrt(slotsToRender.length))
+    const gridRows = Math.ceil(slotsToRender.length / gridCols)
+    
+    const cellWidth = containerWidth / gridCols
+    const cellHeight = containerHeight / gridRows
+    
+    // 픽셀 단위로 세밀하게 조절 (1~3px 단위)
+    // 그리드 셀 크기를 기준으로 하되, 더 세밀한 단위로 계산
+    // 1픽셀 움직임 = 0.01 그리드 단위 (매우 세밀한 조절)
+    const sensitivity = 100 // 감도 조절 (값이 클수록 더 세밀함)
+    const deltaWidthUnits = deltaX / (cellWidth * sensitivity)
+    const deltaHeightUnits = deltaY / (cellHeight * sensitivity)
+    
+    const slot = slotsToRender.find(s => (layoutType === 'custom' ? s.id : slotsToRender.indexOf(s)) === resizingSlot.slotIndex)
+    if (!slot) return
+    
+    let newWidth = resizeStart.width
+    let newHeight = resizeStart.height
+    
+    if (resizingSlot.direction.includes('e')) {
+      newWidth = Math.max(0.5, Math.min(10, resizeStart.width + deltaWidthUnits))
+    }
+    if (resizingSlot.direction.includes('w')) {
+      newWidth = Math.max(0.5, Math.min(10, resizeStart.width - deltaWidthUnits))
+    }
+    if (resizingSlot.direction.includes('s')) {
+      newHeight = Math.max(0.5, Math.min(10, resizeStart.height + deltaHeightUnits))
+    }
+    if (resizingSlot.direction.includes('n')) {
+      newHeight = Math.max(0.5, Math.min(10, resizeStart.height - deltaHeightUnits))
+    }
+    
+    // 값이 변경된 경우에만 업데이트 (소수점 2자리까지 반올림)
+    const roundedWidth = Math.round(newWidth * 100) / 100
+    const roundedHeight = Math.round(newHeight * 100) / 100
+    
+    if (Math.abs(roundedWidth - (slot.width || 1)) > 0.01 || Math.abs(roundedHeight - (slot.height || 1)) > 0.01) {
+      updateCustomSlotSize(pageIndex, slot.id, roundedWidth, roundedHeight)
+    }
+  }, [resizingSlot, resizeStart, slotsToRender, layoutType, pageIndex, updateCustomSlotSize])
+  
+  const handleResizeEnd = useCallback(() => {
+    setResizingSlot(null)
+    setResizeStart({ x: 0, y: 0, width: 0, height: 0 })
+  }, [])
+  
+  // 전역 마우스 이벤트 리스너
+  useEffect(() => {
+    if (resizingSlot) {
+      document.addEventListener('mousemove', handleResizeMove)
+      document.addEventListener('mouseup', handleResizeEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleResizeMove)
+        document.removeEventListener('mouseup', handleResizeEnd)
+      }
+    }
+  }, [resizingSlot, handleResizeMove, handleResizeEnd])
+
+  // 컴포넌트 언마운트 시 fileInputRefs 정리
+  useEffect(() => {
+    return () => {
+      // 모든 file input 요소 제거
+      Object.values(fileInputRefs.current).forEach(input => {
+        if (input && input.parentNode) {
+          input.parentNode.removeChild(input)
+        }
+      })
+      fileInputRefs.current = {}
+    }
+  }, [])
+
+  // slotIndex 정규화 유틸 함수
+  const normalizeSlotIndex = useCallback((slotIndex) => {
+    return typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
+  }, [])
 
   // 현재 페이지의 특정 슬롯 이미지 가져오기
   const getImageForSlot = useCallback((slotIndex) => {
-    return images.find(
-      img => img.pageIndex === pageIndex && img.slotIndex === slotIndex
-    )
-  }, [images, pageIndex])
+    const page = pages.find(p => p.pageIndex === pageIndex)
+    if (!page) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('페이지를 찾을 수 없습니다.', { pageIndex, pages })
+      }
+      return null
+    }
+    // slotIndex 타입 일치 확인 (숫자로 변환)
+    const normalizedSlotIndex = normalizeSlotIndex(slotIndex)
+    const slot = page.slots.find(s => {
+      const slotIdx = normalizeSlotIndex(s.slotIndex)
+      return slotIdx === normalizedSlotIndex
+    })
+    return slot || null
+  }, [pages, pageIndex, normalizeSlotIndex])
   
   // 보조설명 저장
   const handleDescriptionSave = useCallback((slotIndex, description) => {
@@ -84,11 +204,12 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
     }
 
     try {
-      // 이미지 리사이징 및 base64 변환 (HEIC 파일은 자동 변환됨)
-      const base64Url = await resizeImageToBase64(file, 1200, 1600, 0.9)
+      // 이미지 리사이징 및 base64 변환
+      const base64Url = await resizeImage(file, 1200, 1600, 0.9)
       
       // Zustand store에 저장
-      setImage(pageIndex, slotIndex, base64Url, '')
+      // 이미지 업로드 시 원본 이미지 URL도 함께 저장
+      setImage(pageIndex, slotIndex, base64Url, '', base64Url)
     } catch (error) {
       console.error('이미지 업로드 실패:', error)
       const errorMessage = error.message || '이미지 업로드에 실패했습니다.'
@@ -138,8 +259,12 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
   // 이미지 클릭 시 편집 모달 열기
   const handleImageClick = useCallback((slotIndex) => {
     const image = getImageForSlot(slotIndex)
-    if (image) {
-      openEditModal(image.url, slotIndex, pageIndex)
+    if (image && image.url) {
+      // 원본 이미지가 있으면 원본을 사용, 없으면 현재 이미지 사용
+      const imageToEdit = image.originalUrl || image.url
+      openEditModal(imageToEdit, slotIndex, pageIndex)
+    } else if (process.env.NODE_ENV === 'development') {
+      console.warn('편집할 이미지를 찾을 수 없습니다.', { slotIndex, pageIndex, image })
     }
   }, [getImageForSlot, openEditModal, pageIndex])
 
@@ -182,9 +307,12 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
   // 커스텀 슬롯의 grid 스타일 계산
   const getSlotGridStyle = (slot) => {
     if (layoutType !== 'custom' || !slot) return {}
+    // CSS Grid span은 정수만 받으므로, 소수점 값은 올림 처리
+    const width = Math.max(1, Math.ceil(slot.width || 1))
+    const height = Math.max(1, Math.ceil(slot.height || 1))
     return {
-      gridColumn: `span ${slot.width || 1}`,
-      gridRow: `span ${slot.height || 1}`
+      gridColumn: `span ${width}`,
+      gridRow: `span ${height}`
     }
   }
 
@@ -194,11 +322,15 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
         {/* A4 비율 유지 */}
         <div 
           ref={ref}
-          className="border-2 border-gray-300 rounded-lg p-4 w-full bg-white flex flex-col"
+          data-a4-canvas="true"
+          className="border-2 border-black rounded-lg w-full bg-white flex flex-col"
           style={{ 
             aspectRatio: isLandscape ? '297/210' : '210/297',
             maxWidth: '800px',
-            margin: '0 auto'
+            margin: '0 auto',
+            padding: '56.7px', // 15mm ≈ 56.7px (15 * 3.779527559)
+            transformOrigin: 'center center',
+            boxSizing: 'border-box',
           }}
         >
           {/* 메타데이터 박스 */}
@@ -212,15 +344,15 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                 </span>
               )}
             </div>
-            {/* 두 번째 줄: 보조사업자 - +1pt, Bold */}
+            {/* 두 번째 줄: 보조사업자 - 1pt 줄이고 normal */}
             {metadata.farmerName && (
-              <div className="text-base font-bold text-gray-800 mb-1">
+              <div className="text-sm font-normal text-gray-800 mb-1">
                 보조사업자: {metadata.farmerName}
               </div>
             )}
-            {/* 세 번째 줄: 담당자 - +1pt, Bold */}
+            {/* 세 번째 줄: 담당자 - 1pt 줄이고 normal */}
             {metadata.managerName && (
-              <div className="text-base font-bold text-gray-800">
+              <div className="text-sm font-normal text-gray-800">
                 담당자: {metadata.managerName}
               </div>
             )}
@@ -235,7 +367,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                   const newSlotId = Date.now() // 고유 ID 생성
                   addCustomSlot(pageIndex, newSlotId)
                 }}
-                className="px-4 py-2 bg-primary/10 border-2 border-primary/30 text-primary rounded-button hover:bg-primary/20 hover:shadow-glow transition-all font-semibold text-sm flex items-center gap-2"
+                className="px-4 py-2 bg-primary/10 border-2 border-primary/30 text-primary rounded-button hover:bg-primary/20 hover:shadow-glow transition-all font-semibold text-sm flex items-center gap-2 export-control"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -298,7 +430,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                           }}
                         />
                         
-                        {/* 호버 오버레이: 편집 + 삭제 + 슬롯크기조절 버튼 */}
+                        {/* 호버 오버레이: 편집 + 삭제 + 보조설명 + 슬롯크기조절 버튼 */}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
                           <button
                             onClick={(e) => {
@@ -321,6 +453,19 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                             </svg>
                             삭제
                           </button>
+                          {/* 보조설명 버튼 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingDescription(slotIndex)
+                            }}
+                            className="px-4 py-2 bg-green-500 text-white rounded-button hover:bg-green-600 transition-all font-semibold text-sm flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            보조설명
+                          </button>
                           {/* 커스텀 템플릿: 슬롯 크기 조절 버튼 */}
                           {layoutType === 'custom' && (
                             <button
@@ -340,114 +485,117 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
 
                         
                         
-                        {/* 커스텀 템플릿: 슬롯 삭제 버튼 */}
+                        {/* 커스텀 템플릿: 슬롯 삭제 및 크기조절 버튼 */}
                         {layoutType === 'custom' && (
-                          <button
-                            className="absolute top-2 left-10 p-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded text-xs transition-colors shadow-sm z-10"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (confirm('슬롯을 삭제하시겠습니까?')) {
-                                removeCustomSlot(pageIndex, slot.id)
-                                // 슬롯에 이미지가 있으면 이미지도 삭제
-                                if (hasImage) {
-                                  removeImage(pageIndex, slotIndex)
-                                }
-                              }
-                            }}
-                            title="슬롯 삭제"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                      
-                      {/* 보조설명 영역 (슬롯 하단 고정) */}
-                      <div className="mt-auto border-t border-gray-200">
-                        {isEditingDescription ? (
-                          <div className="p-2 bg-gray-50">
-                            <input
-                              type="text"
-                              value={image.description || ''}
-                              onChange={(e) => setImageDescription(pageIndex, slotIndex, e.target.value)}
-                              onBlur={() => setEditingDescription(null)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  setEditingDescription(null)
-                                }
-                              }}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-primary"
-                              placeholder="보조설명 입력"
-                              autoFocus
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                        ) : image.description ? (
-                          <div 
-                            className="p-2 bg-white text-black text-center text-sm cursor-text"
-                            onDoubleClick={(e) => {
-                              e.stopPropagation()
-                              setEditingDescription(slotIndex)
-                            }}
-                            title="더블클릭하여 수정"
-                          >
-                            {image.description}
-                          </div>
-                        ) : (
-                          <button
-                            className="w-full p-2 text-xs text-gray-500 hover:text-primary hover:bg-gray-50 transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setEditingDescription(slotIndex)
-                            }}
-                          >
-                            보조설명
-                          </button>
-                        )}
-                      </div>
-                      
-                      {/* 커스텀 템플릿: 슬롯 크기 편집 영역 */}
-                      {layoutType === 'custom' && isEditingSize && (
-                        <div className="p-2 bg-blue-50 border-t border-blue-200">
-                          <div className="flex items-center gap-2 mb-2">
-                            <label className="text-xs text-gray-700">너비:</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="5"
-                              value={slot.width || 1}
-                              onChange={(e) => {
-                                const width = parseInt(e.target.value) || 1
-                                updateCustomSlotSize(pageIndex, slot.id, width, slot.height || 1)
-                              }}
-                              className="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-primary"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <label className="text-xs text-gray-700">높이:</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="5"
-                              value={slot.height || 1}
-                              onChange={(e) => {
-                                const height = parseInt(e.target.value) || 1
-                                updateCustomSlotSize(pageIndex, slot.id, slot.width || 1, height)
-                              }}
-                              className="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-primary"
-                              onClick={(e) => e.stopPropagation()}
-                            />
+                          <>
                             <button
+                              className="absolute top-2 left-10 p-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded text-xs transition-colors shadow-sm z-10 export-control"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                setEditingSlotSize(null)
+                                if (confirm('슬롯을 삭제하시겠습니까?')) {
+                                  removeCustomSlot(pageIndex, slot.id)
+                                  // 슬롯에 이미지가 있으면 이미지도 삭제
+                                  if (hasImage) {
+                                    removeImage(pageIndex, slotIndex)
+                                  }
+                                }
                               }}
-                              className="ml-auto px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary/90"
+                              title="슬롯 삭제"
                             >
-                              완료
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
                             </button>
-                          </div>
+                            <button
+                              className="absolute top-2 left-20 p-1.5 bg-blue-500/90 hover:bg-blue-600 text-white rounded text-xs transition-colors shadow-sm z-10 export-control"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingSlotSize(slotIndex)
+                              }}
+                              title="슬롯 크기 조절"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                              </svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      
+                      {/* 보조설명 영역 (슬롯 하단 고정) - 버튼 클릭 시에만 표시 */}
+                      {isEditingDescription && (
+                        <div className="mt-auto border-t border-gray-200 p-2 bg-gray-50">
+                          <input
+                            type="text"
+                            value={image.description || ''}
+                            onChange={(e) => {
+                              const newDescription = e.target.value
+                              setImageDescription(pageIndex, slotIndex, newDescription)
+                              // 내용이 비워지면 보조설명란 사라지도록
+                              if (!newDescription.trim()) {
+                                setEditingDescription(null)
+                              }
+                            }}
+                            onBlur={() => {
+                              // onBlur 시 자동 저장 (엔터키 불필요)
+                              const currentDescription = image.description || ''
+                              if (!currentDescription.trim()) {
+                                setEditingDescription(null)
+                              } else {
+                                // 이미 setImageDescription이 onChange에서 호출되므로 여기서는 상태만 닫기
+                                setEditingDescription(null)
+                              }
+                            }}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-primary text-black"
+                            placeholder="보조설명 입력"
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ color: '#000' }}
+                          />
                         </div>
+                      )}
+                      {/* 보조설명 표시 (입력란 없을 때만) - 세로 중앙 정렬 */}
+                      {!isEditingDescription && image.description && (
+                        <div 
+                          className="mt-auto border-t border-gray-200 p-2 bg-white text-black text-center text-sm cursor-text flex items-center justify-center min-h-[2.5rem]"
+                          style={{ 
+                            lineHeight: '1.5',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            setEditingDescription(slotIndex)
+                          }}
+                          title="더블클릭하여 수정"
+                        >
+                          {image.description}
+                        </div>
+                      )}
+                      
+                      {/* 커스텀 템플릿: 드래그 리사이즈 핸들 */}
+                      {layoutType === 'custom' && (
+                        <>
+                          {/* 우측 하단 모서리 핸들 */}
+                          <div
+                            className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500/80 hover:bg-blue-600 cursor-nwse-resize z-20 export-control"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'se')}
+                            style={{ cursor: 'nwse-resize' }}
+                          />
+                          {/* 우측 중간 핸들 */}
+                          <div
+                            className="absolute top-1/2 right-0 -translate-y-1/2 w-2 h-8 bg-blue-500/80 hover:bg-blue-600 cursor-ew-resize z-20 export-control"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'e')}
+                            style={{ cursor: 'ew-resize' }}
+                          />
+                          {/* 하단 중간 핸들 */}
+                          <div
+                            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-2 bg-blue-500/80 hover:bg-blue-600 cursor-ns-resize z-20 export-control"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 's')}
+                            style={{ cursor: 'ns-resize' }}
+                          />
+                        </>
                       )}
                     </>
                   ) : (
@@ -473,21 +621,84 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                         </div>
                       </button>
                       
-                      {/* 커스텀 템플릿: 빈 슬롯 삭제 버튼 */}
+                      {/* 커스텀 템플릿: 빈 슬롯 삭제 및 크기조절 버튼 */}
                       {layoutType === 'custom' && (
-                        <button
-                          className="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded text-xs transition-colors shadow-sm z-10"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (confirm('슬롯을 삭제하시겠습니까?')) {
-                              removeCustomSlot(pageIndex, slot.id)
-                            }
-                          }}
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                        <>
+                          <button
+                            className="absolute top-2 right-2 p-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded text-xs transition-colors shadow-sm z-10 export-control"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (confirm('슬롯을 삭제하시겠습니까?')) {
+                                removeCustomSlot(pageIndex, slot.id)
+                              }
+                            }}
+                            title="슬롯 삭제"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                          <button
+                            className="absolute top-2 right-10 p-1.5 bg-blue-500/90 hover:bg-blue-600 text-white rounded text-xs transition-colors shadow-sm z-10 export-control"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingSlotSize(slotIndex)
+                            }}
+                            title="슬롯 크기 조절"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                            </svg>
+                          </button>
+                        </>
+                      )}
+                      
+                      {/* 커스텀 템플릿: 빈 슬롯 드래그 리사이즈 핸들 */}
+                      {layoutType === 'custom' && (
+                        <>
+                          {/* 우측 하단 모서리 핸들 */}
+                          <div
+                            className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500/80 hover:bg-blue-600 cursor-nwse-resize z-20 export-control"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'se')}
+                            style={{ cursor: 'nwse-resize' }}
+                          />
+                          {/* 우측 중간 핸들 */}
+                          <div
+                            className="absolute top-1/2 right-0 -translate-y-1/2 w-2 h-8 bg-blue-500/80 hover:bg-blue-600 cursor-ew-resize z-20 export-control"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'e')}
+                            style={{ cursor: 'ew-resize' }}
+                          />
+                          {/* 하단 중간 핸들 */}
+                          <div
+                            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-2 bg-blue-500/80 hover:bg-blue-600 cursor-ns-resize z-20 export-control"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 's')}
+                            style={{ cursor: 'ns-resize' }}
+                          />
+                        </>
+                      )}
+                      
+                      {/* 커스텀 템플릿: 빈 슬롯 드래그 리사이즈 핸들 */}
+                      {layoutType === 'custom' && (
+                        <>
+                          {/* 우측 하단 모서리 핸들 */}
+                          <div
+                            className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500/80 hover:bg-blue-600 cursor-nwse-resize z-20"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'se')}
+                            style={{ cursor: 'nwse-resize' }}
+                          />
+                          {/* 우측 중간 핸들 */}
+                          <div
+                            className="absolute top-1/2 right-0 -translate-y-1/2 w-2 h-8 bg-blue-500/80 hover:bg-blue-600 cursor-ew-resize z-20"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'e')}
+                            style={{ cursor: 'ew-resize' }}
+                          />
+                          {/* 하단 중간 핸들 */}
+                          <div
+                            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-2 bg-blue-500/80 hover:bg-blue-600 cursor-ns-resize z-20"
+                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 's')}
+                            style={{ cursor: 'ns-resize' }}
+                          />
+                        </>
                       )}
                     </>
                   )}
@@ -499,7 +710,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
       </div>
 
       {/* 편집 모달 */}
-      <ImageEditModal />
+      <ImageCropModal />
     </>
   )
 })

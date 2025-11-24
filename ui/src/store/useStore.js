@@ -5,38 +5,47 @@ const useStore = create((set) => ({
   currentTemplate: '4cut',
   setCurrentTemplate: (template) => set({ currentTemplate: template }),
 
-  // 페이지 배열
-  pages: [0],
+  // 페이지 배열: [{ pageIndex: number, slots: [{ slotIndex: number, url: string, description: string, originalUrl?: string }] }]
+  pages: [{ pageIndex: 0, slots: [] }],
   currentPageIndex: 0,
   
   // 페이지 관리
-  addPage: () => set((state) => ({
-    pages: [...state.pages, state.pages.length],
-    currentPageIndex: state.pages.length,
-    // 새 페이지에 대한 커스텀 슬롯 초기화
-    customSlots: {
-      ...state.customSlots,
-      [state.pages.length]: []
+  addPage: () => set((state) => {
+    const newPageIndex = state.pages.length
+    return {
+      pages: [...state.pages, { pageIndex: newPageIndex, slots: [] }],
+      currentPageIndex: newPageIndex,
+      // 새 페이지에 대한 커스텀 슬롯 초기화
+      customSlots: {
+        ...state.customSlots,
+        [newPageIndex]: []
+      }
     }
-  })),
+  }),
   
   deletePage: (pageIndex) => set((state) => {
     if (state.pages.length <= 1) return state
     const newPages = state.pages.filter((_, index) => index !== pageIndex)
+    // 인덱스 재정렬
+    const reindexedPages = newPages.map((page, newIdx) => ({
+      ...page,
+      pageIndex: newIdx
+    }))
     const newCustomSlots = { ...state.customSlots }
     delete newCustomSlots[pageIndex]
     // 인덱스 재정렬
     const reindexedSlots = {}
-    Object.keys(newCustomSlots).forEach((oldIdx, newIdx) => {
-      if (parseInt(oldIdx) < pageIndex) {
+    Object.keys(newCustomSlots).forEach((oldIdx) => {
+      const oldIdxNum = parseInt(oldIdx)
+      if (oldIdxNum < pageIndex) {
         reindexedSlots[oldIdx] = newCustomSlots[oldIdx]
-      } else if (parseInt(oldIdx) > pageIndex) {
-        reindexedSlots[parseInt(oldIdx) - 1] = newCustomSlots[oldIdx]
+      } else if (oldIdxNum > pageIndex) {
+        reindexedSlots[oldIdxNum - 1] = newCustomSlots[oldIdx]
       }
     })
     return {
-      pages: newPages,
-      currentPageIndex: Math.max(0, Math.min(state.currentPageIndex, newPages.length - 1)),
+      pages: reindexedPages,
+      currentPageIndex: Math.max(0, Math.min(state.currentPageIndex, reindexedPages.length - 1)),
       customSlots: reindexedSlots
     }
   }),
@@ -80,40 +89,77 @@ const useStore = create((set) => ({
     }
   }),
 
-  // 이미지 데이터 구조: { pageIndex, slotIndex, url, description }
-  images: [],
-  
-  // 이미지 관리
-  setImage: (pageIndex, slotIndex, url, description = '') => set((state) => {
-    const existingIndex = state.images.findIndex(
-      img => img.pageIndex === pageIndex && img.slotIndex === slotIndex
-    )
+  // 이미지 관리 - pages 구조 사용
+  setImage: (pageIndex, slotIndex, url, description = '', originalUrl = null) => set((state) => {
+    const page = state.pages.find(p => p.pageIndex === pageIndex)
+    if (!page) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('페이지를 찾을 수 없습니다.', { pageIndex, pages: state.pages })
+      }
+      return state
+    }
     
-    const newImage = { pageIndex, slotIndex, url, description }
+    // slotIndex 타입 일치 확인 (숫자로 변환)
+    const normalizedSlotIndex = typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
+    const existingSlotIndex = page.slots.findIndex(slot => {
+      const slotIdx = typeof slot.slotIndex === 'number' ? slot.slotIndex : Number(slot.slotIndex)
+      return slotIdx === normalizedSlotIndex
+    })
+    const existingSlot = existingSlotIndex >= 0 ? page.slots[existingSlotIndex] : null
+    const finalOriginalUrl = originalUrl || existingSlot?.originalUrl || url
     
-    if (existingIndex >= 0) {
-      const newImages = [...state.images]
-      newImages[existingIndex] = newImage
-      return { images: newImages }
-    } else {
-      return { images: [...state.images, newImage] }
+    const newSlot = {
+      slotIndex: normalizedSlotIndex,
+      url,
+      description,
+      originalUrl: finalOriginalUrl
+    }
+    
+    const newSlots = existingSlotIndex >= 0
+      ? page.slots.map((slot, idx) => idx === existingSlotIndex ? newSlot : slot)
+      : [...page.slots, newSlot]
+    
+    return {
+      pages: state.pages.map(p => 
+        p.pageIndex === pageIndex ? { ...p, slots: newSlots } : p
+      )
     }
   }),
   
-  removeImage: (pageIndex, slotIndex) => set((state) => ({
-    images: state.images.filter(
-      img => !(img.pageIndex === pageIndex && img.slotIndex === slotIndex)
-    )
-  })),
+  removeImage: (pageIndex, slotIndex) => set((state) => {
+    // slotIndex 타입 일치 확인 (숫자로 변환)
+    const normalizedSlotIndex = typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
+    return {
+      pages: state.pages.map(page =>
+        page.pageIndex === pageIndex
+          ? { 
+              ...page, 
+              slots: page.slots.filter(slot => {
+                const slotIdx = typeof slot.slotIndex === 'number' ? slot.slotIndex : Number(slot.slotIndex)
+                return slotIdx !== normalizedSlotIndex
+              })
+            }
+          : page
+      )
+    }
+  }),
   
   setImageDescription: (pageIndex, slotIndex, description) => set((state) => {
-    const newImages = state.images.map(img => {
-      if (img.pageIndex === pageIndex && img.slotIndex === slotIndex) {
-        return { ...img, description }
-      }
-      return img
-    })
-    return { images: newImages }
+    // slotIndex 타입 일치 확인 (숫자로 변환)
+    const normalizedSlotIndex = typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
+    return {
+      pages: state.pages.map(page =>
+        page.pageIndex === pageIndex
+          ? {
+              ...page,
+              slots: page.slots.map(slot => {
+                const slotIdx = typeof slot.slotIndex === 'number' ? slot.slotIndex : Number(slot.slotIndex)
+                return slotIdx === normalizedSlotIndex ? { ...slot, description } : slot
+              })
+            }
+          : page
+      )
+    }
   }),
 
   // 메타데이터
@@ -133,9 +179,8 @@ const useStore = create((set) => ({
   // 초기화 함수
   initializeTemplate: (template) => set({
     currentTemplate: template,
-    pages: [0],
+    pages: [{ pageIndex: 0, slots: [] }],
     currentPageIndex: 0,
-    images: [],
     customSlots: template === 'custom' ? { 0: [] } : {},
     metadata: {
       title: '현장 확인 사진',
@@ -157,15 +202,29 @@ const useStore = create((set) => ({
     crop: { x: 0, y: 0 },
   },
   
-  openEditModal: (imageUrl, slotIndex, pageIndex) => set({
-    editModal: {
-      isOpen: true,
-      imageUrl,
-      slotIndex,
-      pageIndex,
-      zoom: 1,
-      rotation: 0,
-      crop: { x: 0, y: 0 },
+  // 편집 모달 열기 (항상 원본 이미지 기준)
+  openEditModal: (imageUrl, slotIndex, pageIndex) => set((state) => {
+    // slotIndex 타입 일치 확인 (숫자로 변환)
+    const normalizedSlotIndex = typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
+    
+    // pages 구조에서 원본 URL 가져오기
+    const page = state.pages.find(p => p.pageIndex === pageIndex)
+    const existingSlot = page?.slots.find(slot => {
+      const slotIdx = typeof slot.slotIndex === 'number' ? slot.slotIndex : Number(slot.slotIndex)
+      return slotIdx === normalizedSlotIndex
+    })
+    const originalUrl = existingSlot?.originalUrl || imageUrl
+    
+    return {
+      editModal: {
+        isOpen: true,
+        imageUrl: originalUrl, // 항상 원본 이미지 사용
+        slotIndex: normalizedSlotIndex,
+        pageIndex,
+        zoom: 1,
+        rotation: 0,
+        crop: { x: 0, y: 0 },
+      }
     }
   }),
   
