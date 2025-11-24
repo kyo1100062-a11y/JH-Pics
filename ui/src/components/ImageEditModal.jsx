@@ -2,7 +2,7 @@ import { Fragment, useState, useCallback } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import Cropper from 'react-easy-crop'
 import useStore from '../store/useStore'
-import { getCroppedImg } from '../utils/imageUtils'
+import { getCroppedImgFromPixels } from '../utils/imageUtils'
 
 /**
  * 이미지 편집 모달 컴포넌트
@@ -27,7 +27,9 @@ const ImageEditModal = () => {
   // 크롭 영역 변경 핸들러 (react-easy-crop의 onCropComplete)
   const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
     setCropArea(croppedAreaPixels)
-  }, [])
+    // crop 상태도 업데이트하여 실시간 반영
+    updateEditModal({ crop: croppedArea })
+  }, [updateEditModal])
 
   // 저장 버튼 핸들러
   const handleSave = async () => {
@@ -43,11 +45,10 @@ const ImageEditModal = () => {
     setIsSaving(true)
 
     try {
-      // 크롭된 이미지 생성 (cropArea는 onCropComplete에서 설정됨)
-      const croppedImageUrl = await getCroppedImg(
+      // 크롭된 이미지 생성 (cropArea를 직접 사용)
+      const croppedImageUrl = await getCroppedImgFromPixels(
         imageUrl,
-        crop,
-        zoom,
+        cropArea,
         rotation,
         0.9
       )
@@ -127,11 +128,17 @@ const ImageEditModal = () => {
                       crop={crop}
                       zoom={zoom}
                       rotation={rotation}
-                      aspect={1}
-                      onCropChange={(crop) => updateEditModal({ crop })}
+                      aspect={undefined}
+                      onCropChange={(newCrop) => updateEditModal({ crop: newCrop })}
                       onCropComplete={onCropComplete}
-                      onZoomChange={handleZoomChange}
-                      onRotationChange={handleRotationChange}
+                      onZoomChange={(newZoom) => {
+                        handleZoomChange(newZoom)
+                        updateEditModal({ zoom: newZoom })
+                      }}
+                      onRotationChange={(newRotation) => {
+                        handleRotationChange(newRotation)
+                        updateEditModal({ rotation: newRotation })
+                      }}
                       cropShape="rect"
                       showGrid={false}
                       style={{

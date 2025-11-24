@@ -63,3 +63,61 @@ input[type="range"].range-slider::-moz-range-thumb {
   border: 2px solid #10131A;
   box-shadow: 0 0 10px rgba(76, 111, 255, 0.5);
 }
+
+/* JH Pics 로고 스타일 - SUIT 이미지 스타일 참고 */
+.logo-text {
+  font-family: 'SUIT', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #AEEAFF;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-decoration: none;
+  display: inline-block;
+  position: relative;
+  transition: all 0.3s ease;
+  text-shadow: 
+    0 0 10px rgba(174, 234, 255, 0.5),
+    0 0 20px rgba(174, 234, 255, 0.3),
+    0 0 30px rgba(174, 234, 255, 0.2),
+    0 2px 4px rgba(0, 0, 0, 0.3);
+  filter: drop-shadow(0 0 8px rgba(174, 234, 255, 0.4));
+}
+
+.logo-text::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120%;
+  height: 120%;
+  background: radial-gradient(circle, rgba(174, 234, 255, 0.1) 0%, transparent 70%);
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.logo-text:hover {
+  color: #B8F0FF;
+  text-shadow: 
+    0 0 15px rgba(184, 240, 255, 0.7),
+    0 0 25px rgba(184, 240, 255, 0.5),
+    0 0 35px rgba(184, 240, 255, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.3);
+  filter: drop-shadow(0 0 12px rgba(184, 240, 255, 0.6));
+  transform: scale(1.02);
+}
+
+.logo-text:hover::before {
+  opacity: 1;
+}
+
+/* 로고의 "Pics" 부분 크기 조정 */
+.logo-text-small {
+  font-size: 0.85em;
+  display: inline-block;
+  text-transform: none;
+}

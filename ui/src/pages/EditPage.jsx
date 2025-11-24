@@ -21,6 +21,7 @@ const EditPage = () => {
     pages,
     currentPageIndex,
     metadata,
+    projects,
     addPage,
     deletePage,
     setCurrentPage,
@@ -40,6 +41,15 @@ const EditPage = () => {
     addPage()
   }
 
+  // 출력 파일명 생성
+  const generateFilename = () => {
+    const parts = []
+    if (metadata.title) parts.push(metadata.title)
+    if (metadata.projectName) parts.push(metadata.projectName)
+    if (metadata.farmerName) parts.push(metadata.farmerName)
+    return parts.length > 0 ? parts.join('-') : 'document'
+  }
+
   // PDF 출력 핸들러
   const handleExportPDF = async () => {
     try {
@@ -49,8 +59,8 @@ const EditPage = () => {
         return
       }
 
-      const filename = metadata.title || 'document'
-      await exportToPDF(canvasElement, filename, highQuality)
+      const filename = generateFilename()
+      await exportToPDF(canvasElement, filename, highQuality, currentTemplate)
     } catch (error) {
       console.error('PDF 출력 실패:', error)
       alert('PDF 출력에 실패했습니다.')
@@ -66,7 +76,7 @@ const EditPage = () => {
         return
       }
 
-      const filename = metadata.title || 'document'
+      const filename = generateFilename()
       await exportToJPEG(canvasElement, filename, highQuality)
     } catch (error) {
       console.error('JPEG 출력 실패:', error)
@@ -80,20 +90,28 @@ const EditPage = () => {
   }
 
   const handleProjectChange = (projectId) => {
-    updateMetadata({ projectId })
+    const selectedProject = projects.find(p => p.id === projectId)
+    updateMetadata({ 
+      projectId,
+      projectName: selectedProject ? selectedProject.name : ''
+    })
   }
 
   const handleFarmerNameChange = (farmerName) => {
     updateMetadata({ farmerName })
   }
 
+  const handleManagerNameChange = (managerName) => {
+    updateMetadata({ managerName })
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* 상단 입력 영역 */}
       <div className="mb-8 bg-deep-blue border-2 border-soft-blue/50 rounded-button-lg p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
           {/* 제목 입력 */}
-          <div>
+          <div className="md:col-span-3">
             <label className="block text-sm font-semibold text-soft-blue mb-2">
               제목
             </label>
@@ -107,31 +125,49 @@ const EditPage = () => {
           </div>
 
           {/* 사업명 선택 */}
-          <div>
+          <div className="md:col-span-5">
             <label className="block text-sm font-semibold text-soft-blue mb-2">
               사업명
             </label>
             <select
-              value={metadata.projectId}
+              value={metadata.projectId || ''}
               onChange={(e) => handleProjectChange(e.target.value)}
               className="w-full px-4 py-2.5 bg-deep-blue border-2 border-soft-blue/50 rounded-button focus:border-accent-mint focus:shadow-glow focus:outline-none text-white transition-all"
             >
               <option value="" className="bg-deep-blue">사업 선택</option>
-              {/* 사업 목록은 추후 동적으로 로드 */}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id} className="bg-deep-blue">
+                  {project.name}
+                </option>
+              ))}
             </select>
           </div>
 
-          {/* 보조사업자명 입력 */}
-          <div>
+          {/* 보조사업자 입력 */}
+          <div className="md:col-span-2">
             <label className="block text-sm font-semibold text-soft-blue mb-2">
-              보조사업자명
+              보조사업자
             </label>
             <input
               type="text"
               value={metadata.farmerName}
               onChange={(e) => handleFarmerNameChange(e.target.value)}
               className="w-full px-4 py-2.5 bg-deep-blue border-2 border-soft-blue/50 rounded-button focus:border-accent-mint focus:shadow-glow focus:outline-none text-white placeholder-soft-blue/50 transition-all"
-              placeholder="보조사업자명 입력"
+              placeholder="보조사업자 입력"
+            />
+          </div>
+
+          {/* 담당자 입력 */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-semibold text-soft-blue mb-2">
+              담당자
+            </label>
+            <input
+              type="text"
+              value={metadata.managerName}
+              onChange={(e) => handleManagerNameChange(e.target.value)}
+              className="w-full px-4 py-2.5 bg-deep-blue border-2 border-soft-blue/50 rounded-button focus:border-accent-mint focus:shadow-glow focus:outline-none text-white placeholder-soft-blue/50 transition-all"
+              placeholder="담당자 입력"
             />
           </div>
         </div>

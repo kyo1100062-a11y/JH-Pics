@@ -10,9 +10,9 @@ const Header = () => {
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
         <Link 
           to="/" 
-          className="text-2xl font-bold text-primary hover:text-soft-blue transition-all hover:drop-shadow-[0_0_8px_rgba(76,111,255,0.5)]"
+          className="logo-text group"
         >
-          JH Pics
+          JH <span className="logo-text-small">Pics</span>
         </Link>
         <nav className="flex items-center gap-2">
           <Link 

@@ -42,7 +42,7 @@ const HomePage = () => {
             </span>
           </h1>
           <p className="text-xl md:text-2xl text-soft-blue max-w-3xl mx-auto leading-relaxed">
-            현장 확인 사진을 빠르게 업로드하고 편집하여 A4 문서로 출력하세요
+            현장 확인 사진을 간편하게 관리하세요
           </p>
         </div>
       </section>
