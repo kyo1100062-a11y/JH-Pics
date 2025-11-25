@@ -1,7 +1,7 @@
 // ============================================
 // API Client - Supabase Edge Functions 연동
 // ============================================
-import { supabase } from './supabaseClient'
+import { supabase } from './api/supabaseClient'
 
 const API_BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 

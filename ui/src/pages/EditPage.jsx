@@ -7,8 +7,9 @@ import A4Canvas from '../components/A4Canvas'
 import useStore from '../store/useStore'
 import { exportToPDF, exportToJPEG, exportAllPagesToPDF } from '../utils/exportUtils'
 import { getProjects } from '../lib/api/projects'
-import { getPictureSets, createPictureSet, updatePictureSet } from '../lib/api/pictureSets'
-import { uploadImage } from '../lib/api/upload'
+import { getPictureSets } from '../lib/api/pictureSets'
+import { uploadImage } from '../utils/uploadImage'
+import { savePictureSet } from '../utils/savePictureSet'
 
 const EditPage = () => {
   const { id } = useParams() // picture_set_id 또는 'new'
@@ -164,24 +165,22 @@ const EditPage = () => {
       }
 
       let pictureSetId = currentPictureSetId
-      let result
 
-      // 2. Picture Set 생성 또는 업데이트
-      if (pictureSetId) {
-        result = await updatePictureSet(pictureSetId, pictureSetData)
-      } else {
-        result = await createPictureSet(pictureSetData)
-        if (result.success) {
-          pictureSetId = result.data.id
-          setCurrentPictureSetId(pictureSetId)
-          // URL 업데이트
-          navigate(`/edit/${pictureSetId}`, { replace: true })
-        }
+      // 2. Picture Set 먼저 저장 (ID 확보)
+      // 새로 생성하는 경우 ID를 먼저 받아와야 이미지 업로드 경로에 사용 가능
+      const saveResult = await savePictureSet(pictureSetId, pictureSetData)
+
+      if (!saveResult.success) {
+        const errorMsg = saveResult.error || 'Picture Set 저장에 실패했습니다.'
+        throw new Error(errorMsg)
       }
 
-      if (!result.success) {
-        const errorMsg = result.error || 'Picture Set 저장에 실패했습니다.'
-        throw new Error(errorMsg)
+      // 새로 생성된 경우 ID 저장 및 URL 업데이트
+      if (!pictureSetId && saveResult.data) {
+        pictureSetId = saveResult.data.id
+        setCurrentPictureSetId(pictureSetId)
+        // URL 업데이트
+        navigate(`/edit/${pictureSetId}`, { replace: true })
       }
 
       // 3. base64 이미지들을 Storage에 업로드
@@ -205,12 +204,12 @@ const EditPage = () => {
               ).then(uploadResult => {
                 if (uploadResult.success) {
                   // 업로드된 URL로 슬롯 업데이트
-                  slot.url = uploadResult.data.url
+                  slot.url = uploadResult.url
                   // Store도 업데이트
                   useStore.getState().setImage(
                     page.pageIndex,
                     slot.slotIndex,
-                    uploadResult.data.url,
+                    uploadResult.url,
                     slot.description,
                     slot.originalUrl
                   )
@@ -235,12 +234,15 @@ const EditPage = () => {
 
       // 4. 업데이트된 pages로 Picture Set 다시 저장
       const finalPages = useStore.getState().pages
-      const finalUpdateResult = await updatePictureSet(pictureSetId, {
+      const finalPictureSetData = {
+        ...pictureSetData,
         pages: finalPages
-      })
+      }
 
-      if (!finalUpdateResult.success) {
-        const errorMsg = finalUpdateResult.error || 'Picture Set 업데이트에 실패했습니다.'
+      const finalSaveResult = await savePictureSet(pictureSetId, finalPictureSetData)
+
+      if (!finalSaveResult.success) {
+        const errorMsg = finalSaveResult.error || 'Picture Set 업데이트에 실패했습니다.'
         throw new Error(errorMsg)
       }
 
@@ -256,8 +258,8 @@ const EditPage = () => {
           errorMessage = '네트워크 연결을 확인해주세요. 인터넷 연결이 불안정할 수 있습니다.'
         } else if (error.message.includes('인증') || error.message.includes('Unauthorized')) {
           errorMessage = '로그인이 필요합니다. 다시 로그인해주세요.'
-        } else if (error.message.includes('권한') || error.message.includes('Forbidden')) {
-          errorMessage = '저장 권한이 없습니다. 관리자에게 문의해주세요.'
+        } else if (error.message.includes('권한') || error.message.includes('Forbidden') || error.message.includes('row-level security')) {
+          errorMessage = '저장 권한이 없습니다. 로그인 상태와 RLS 정책을 확인해주세요.'
         } else {
           errorMessage = `저장 실패: ${error.message}`
         }

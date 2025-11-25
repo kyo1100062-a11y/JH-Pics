@@ -7,6 +7,22 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
+// 환경변수 검증
+if (!supabaseUrl || !supabaseAnonKey) {
+  const missingVars = []
+  if (!supabaseUrl) missingVars.push('VITE_SUPABASE_URL')
+  if (!supabaseAnonKey) missingVars.push('VITE_SUPABASE_ANON_KEY')
+  
+  const errorMessage = `❌ Supabase 환경변수가 설정되지 않았습니다: ${missingVars.join(', ')}\n\n로컬 개발: ui/.env 파일을 생성하고 환경변수를 설정하세요.\nVercel 배포: Vercel 프로젝트 설정에서 환경변수를 추가하세요.`
+  
+  console.error(errorMessage)
+  
+  // 개발 환경에서만 에러 throw (프로덕션에서는 조용히 실패)
+  if (import.meta.env.DEV) {
+    throw new Error(errorMessage)
+  }
+}
+
 // Supabase 클라이언트 생성
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
