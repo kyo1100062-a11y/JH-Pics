@@ -11,9 +11,16 @@ const useStore = create((set) => ({
   
   // 페이지 관리
   addPage: () => set((state) => {
+    // 기존 페이지 데이터를 보존하면서 새 페이지 추가
     const newPageIndex = state.pages.length
+    const newPages = [...state.pages]
+    // 새 페이지를 독립적으로 생성 (기존 페이지와 완전히 분리)
+    newPages.push({ 
+      pageIndex: newPageIndex, 
+      slots: [] // 빈 슬롯 배열로 시작
+    })
     return {
-      pages: [...state.pages, { pageIndex: newPageIndex, slots: [] }],
+      pages: newPages,
       currentPageIndex: newPageIndex,
       // 새 페이지에 대한 커스텀 슬롯 초기화
       customSlots: {
@@ -25,27 +32,47 @@ const useStore = create((set) => ({
   
   deletePage: (pageIndex) => set((state) => {
     if (state.pages.length <= 1) return state
-    const newPages = state.pages.filter((_, index) => index !== pageIndex)
-    // 인덱스 재정렬
+    
+    // pageIndex로 필터링 (배열 인덱스가 아닌 pageIndex 속성으로 비교)
+    const newPages = state.pages.filter((page) => page.pageIndex !== pageIndex)
+    
+    // 인덱스 재정렬: 모든 페이지의 pageIndex를 0부터 순차적으로 재정렬
     const reindexedPages = newPages.map((page, newIdx) => ({
       ...page,
       pageIndex: newIdx
     }))
+    
+    // customSlots도 재정렬
     const newCustomSlots = { ...state.customSlots }
     delete newCustomSlots[pageIndex]
-    // 인덱스 재정렬
+    
+    // customSlots 인덱스 재정렬
     const reindexedSlots = {}
     Object.keys(newCustomSlots).forEach((oldIdx) => {
       const oldIdxNum = parseInt(oldIdx)
       if (oldIdxNum < pageIndex) {
+        // 삭제된 페이지보다 앞에 있는 페이지는 인덱스 유지
         reindexedSlots[oldIdx] = newCustomSlots[oldIdx]
       } else if (oldIdxNum > pageIndex) {
+        // 삭제된 페이지보다 뒤에 있는 페이지는 인덱스 -1
         reindexedSlots[oldIdxNum - 1] = newCustomSlots[oldIdx]
       }
     })
+    
+    // 현재 페이지 인덱스 조정
+    const deletedPageIndex = pageIndex
+    let newCurrentPageIndex = state.currentPageIndex
+    if (state.currentPageIndex === deletedPageIndex) {
+      // 삭제된 페이지가 현재 페이지인 경우, 이전 페이지로 이동
+      newCurrentPageIndex = Math.max(0, deletedPageIndex - 1)
+    } else if (state.currentPageIndex > deletedPageIndex) {
+      // 삭제된 페이지보다 뒤에 있는 경우, 인덱스 -1
+      newCurrentPageIndex = state.currentPageIndex - 1
+    }
+    
     return {
       pages: reindexedPages,
-      currentPageIndex: Math.max(0, Math.min(state.currentPageIndex, reindexedPages.length - 1)),
+      currentPageIndex: Math.max(0, Math.min(newCurrentPageIndex, reindexedPages.length - 1)),
       customSlots: reindexedSlots
     }
   }),
@@ -175,6 +202,13 @@ const useStore = create((set) => ({
   updateMetadata: (updates) => set((state) => ({
     metadata: { ...state.metadata, ...updates }
   })),
+
+  // pages 직접 설정 (DB에서 로드할 때 사용)
+  setPages: (pages) => set({ pages }),
+
+  // 현재 Picture Set ID (저장된 문서의 ID)
+  currentPictureSetId: null,
+  setCurrentPictureSetId: (id) => set({ currentPictureSetId: id }),
 
   // 초기화 함수
   initializeTemplate: (template) => set({

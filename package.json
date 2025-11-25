@@ -1,0 +1,17 @@
+{
+  "name": "jh-pics",
+  "version": "1.0.0",
+  "description": "지혜로운 Pictures - 보조사업 사진 문서화 앱",
+  "scripts": {
+    "dev": "cd ui && npm run dev",
+    "build": "cd ui && npm run build",
+    "deploy:frontend": "cd ui && vercel --prod",
+    "deploy:functions": "cd supabase && supabase functions deploy projects && supabase functions deploy picture_sets && supabase functions deploy upload",
+    "deploy:all": "npm run deploy:functions && npm run deploy:frontend",
+    "test": "cd ui && npm test"
+  },
+  "keywords": ["supabase", "react", "vite", "vercel"],
+  "author": "",
+  "license": "MIT"
+}
+

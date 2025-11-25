@@ -26,7 +26,22 @@ const ImageCropModal = () => {
       setCrop({ x: 0, y: 0 })
       setZoom(1)
       setRotation(0)
+      // 초기 cropAreaPixels는 null로 두되, 이미지 로드 후 자동으로 설정
       setCropAreaPixels(null)
+      
+      // 이미지가 로드되면 기본 cropAreaPixels 설정
+      const img = new Image()
+      img.onload = () => {
+        // 이미지 크기에 맞춰 기본 cropAreaPixels 설정
+        const defaultCropArea = {
+          x: 0,
+          y: 0,
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        }
+        setCropAreaPixels(defaultCropArea)
+      }
+      img.src = imageUrl
     }
   }, [isOpen, imageUrl])
 
@@ -58,9 +73,24 @@ const ImageCropModal = () => {
       return
     }
 
-    if (!cropAreaPixels) {
-      alert('크롭 영역을 선택해주세요.')
-      return
+    // cropAreaPixels가 없으면 전체 이미지를 사용
+    let finalCropAreaPixels = cropAreaPixels
+    if (!finalCropAreaPixels) {
+      // 이미지 크기를 가져와서 전체 영역을 cropAreaPixels로 설정
+      const img = new Image()
+      await new Promise((resolve, reject) => {
+        img.onload = () => {
+          finalCropAreaPixels = {
+            x: 0,
+            y: 0,
+            width: img.naturalWidth,
+            height: img.naturalHeight
+          }
+          resolve()
+        }
+        img.onerror = reject
+        img.src = imageUrl
+      })
     }
 
     setIsSaving(true)
@@ -81,7 +111,7 @@ const ImageCropModal = () => {
       // 편집된 이미지 생성 (원본 기준)
       const editedImageUrl = await applyImageEdits(
         originalUrl,
-        cropAreaPixels,
+        finalCropAreaPixels,
         zoom,
         rotation,
         0.9

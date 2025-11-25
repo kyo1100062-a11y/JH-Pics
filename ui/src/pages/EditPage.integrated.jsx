@@ -166,8 +166,7 @@ const EditPage = () => {
       }
 
       if (!result.success) {
-        const errorMsg = result.error || 'Picture Set 저장에 실패했습니다.'
-        throw new Error(errorMsg)
+        throw new Error(result.error)
       }
 
       // 3. base64 이미지들을 Storage에 업로드
@@ -201,12 +200,7 @@ const EditPage = () => {
                     slot.originalUrl
                   )
                 } else {
-                  const errorMsg = uploadResult.error || '이미지 업로드에 실패했습니다.'
-                  console.error('이미지 업로드 실패:', errorMsg)
-                  // 개별 이미지 업로드 실패는 경고만 표시하고 계속 진행
-                  if (process.env.NODE_ENV === 'development') {
-                    console.warn(`슬롯 ${slot.slotIndex} 이미지 업로드 실패:`, errorMsg)
-                  }
+                  console.error('이미지 업로드 실패:', uploadResult.error)
                 }
               })
             )
@@ -226,38 +220,14 @@ const EditPage = () => {
       })
 
       if (!finalUpdateResult.success) {
-        const errorMsg = finalUpdateResult.error || 'Picture Set 업데이트에 실패했습니다.'
-        throw new Error(errorMsg)
+        throw new Error(finalUpdateResult.error)
       }
 
       alert('저장되었습니다.')
 
     } catch (error) {
       console.error('저장 실패:', error)
-      let errorMessage = '저장에 실패했습니다.'
-      
-      // 구체적인 에러 메시지 제공
-      if (error.message) {
-        if (error.message.includes('네트워크') || error.message.includes('Network')) {
-          errorMessage = '네트워크 연결을 확인해주세요. 인터넷 연결이 불안정할 수 있습니다.'
-        } else if (error.message.includes('인증') || error.message.includes('Unauthorized')) {
-          errorMessage = '로그인이 필요합니다. 다시 로그인해주세요.'
-        } else if (error.message.includes('권한') || error.message.includes('Forbidden')) {
-          errorMessage = '저장 권한이 없습니다. 관리자에게 문의해주세요.'
-        } else {
-          errorMessage = `저장 실패: ${error.message}`
-        }
-      }
-      
-      alert(errorMessage)
-      
-      // 네트워크 에러인 경우 재시도 옵션 제공
-      if (error.message && (error.message.includes('네트워크') || error.message.includes('Network'))) {
-        if (confirm('네트워크 오류가 발생했습니다. 다시 시도하시겠습니까?')) {
-          // 재시도
-          setTimeout(() => handleSave(), 1000)
-        }
-      }
+      alert(error.message || '저장에 실패했습니다.')
     } finally {
       setSaving(false)
       setUploadingImages(false)
@@ -585,3 +555,4 @@ const EditPage = () => {
 }
 
 export default EditPage
+

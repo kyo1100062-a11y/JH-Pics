@@ -1,30 +1,73 @@
-import { useState, Fragment } from 'react'
+import { useState, Fragment, useEffect } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import useStore from '../store/useStore'
+import useAuthStore from '../store/authStore'
+import { getProjects, createProject, updateProject, deleteProject } from '../lib/api/projects'
 
 const ProjectListPage = () => {
-  const { projects, addProject, updateProject, deleteProject } = useStore()
+  const { projects, setProjects } = useStore()
+  const { isAdmin } = useAuthStore()
   
   // 모달 상태
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
   const [projectName, setProjectName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  
+  // 프로젝트 목록 불러오기
+  useEffect(() => {
+    loadProjects()
+  }, [])
+  
+  const loadProjects = async () => {
+    setLoading(true)
+    try {
+      const result = await getProjects()
+      if (result.success) {
+        setProjects(result.data)
+      } else {
+        alert(result.error || '프로젝트 목록을 불러오는데 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('프로젝트 로드 오류:', error)
+      alert('프로젝트 목록을 불러오는데 실패했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }
   
   // 사업 추가 모달 열기
   const handleOpenAddModal = () => {
     setProjectName('')
+    setEditingProject(null)
     setIsAddModalOpen(true)
   }
   
   // 사업 추가
-  const handleAddProject = () => {
+  const handleAddProject = async () => {
     if (!projectName.trim()) {
       alert('사업명을 입력해주세요.')
       return
     }
-    addProject(projectName)
-    setIsAddModalOpen(false)
-    setProjectName('')
+    
+    setSaving(true)
+    try {
+      const result = await createProject(projectName.trim())
+      if (result.success) {
+        setIsAddModalOpen(false)
+        setProjectName('')
+        await loadProjects() // 목록 새로고침
+        alert('프로젝트가 생성되었습니다.')
+      } else {
+        alert(result.error || '프로젝트 생성에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('프로젝트 생성 오류:', error)
+      alert('프로젝트 생성에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
   }
   
   // 수정 모달 열기
@@ -35,21 +78,52 @@ const ProjectListPage = () => {
   }
   
   // 사업 수정
-  const handleUpdateProject = () => {
+  const handleUpdateProject = async () => {
     if (!projectName.trim()) {
       alert('사업명을 입력해주세요.')
       return
     }
-    updateProject(editingProject.id, projectName)
-    setIsAddModalOpen(false)
-    setEditingProject(null)
-    setProjectName('')
+    
+    setSaving(true)
+    try {
+      const result = await updateProject(editingProject.id, projectName.trim())
+      if (result.success) {
+        setIsAddModalOpen(false)
+        setEditingProject(null)
+        setProjectName('')
+        await loadProjects() // 목록 새로고침
+        alert('프로젝트가 수정되었습니다.')
+      } else {
+        alert(result.error || '프로젝트 수정에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('프로젝트 수정 오류:', error)
+      alert('프로젝트 수정에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
   }
   
   // 사업 삭제
-  const handleDeleteProject = (project) => {
-    if (window.confirm(`"${project.name}" 사업을 삭제하시겠습니까?`)) {
-      deleteProject(project.id)
+  const handleDeleteProject = async (project) => {
+    if (!window.confirm(`"${project.name}" 사업을 삭제하시겠습니까?`)) {
+      return
+    }
+    
+    setSaving(true)
+    try {
+      const result = await deleteProject(project.id)
+      if (result.success) {
+        await loadProjects() // 목록 새로고침
+        alert('프로젝트가 삭제되었습니다.')
+      } else {
+        alert(result.error || '프로젝트 삭제에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('프로젝트 삭제 오류:', error)
+      alert('프로젝트 삭제에 실패했습니다.')
+    } finally {
+      setSaving(false)
     }
   }
   
@@ -67,7 +141,8 @@ const ProjectListPage = () => {
           <h1 className="text-4xl md:text-5xl font-bold text-white">사업 리스트</h1>
           <button
             onClick={handleOpenAddModal}
-            className="px-6 py-3 bg-primary text-white rounded-button hover:bg-primary/90 hover:shadow-glow transition-all font-semibold flex items-center gap-2"
+            disabled={saving}
+            className="px-6 py-3 bg-primary text-white rounded-button hover:bg-primary/90 hover:shadow-glow transition-all font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -77,58 +152,71 @@ const ProjectListPage = () => {
         </div>
         
         <div className="bg-deep-blue border-2 border-soft-blue/50 rounded-button-lg p-8 shadow-lg">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-soft-blue/30">
-                  <th className="pb-4 text-soft-blue font-semibold">사업명</th>
-                  <th className="pb-4 text-soft-blue font-semibold text-right">작업</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projects.length === 0 ? (
-                  <tr>
-                    <td colSpan={2} className="py-12 text-center text-soft-blue/60">
-                      등록된 사업이 없습니다.
-                    </td>
+          {loading ? (
+            <div className="py-12 text-center text-soft-blue/60">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <p className="mt-4">로딩 중...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-soft-blue/30">
+                    <th className="pb-4 text-soft-blue font-semibold">사업명</th>
+                    <th className="pb-4 text-soft-blue font-semibold text-right">작업</th>
                   </tr>
-                ) : (
-                  projects.map((project) => (
-                    <tr 
-                      key={project.id} 
-                      className="border-b border-soft-blue/10 hover:bg-soft-blue/5 transition-colors"
-                    >
-                      <td className="py-4 text-white font-medium">{project.name}</td>
-                      <td className="py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          {/* 수정 버튼 */}
-                          <button
-                            onClick={() => handleOpenEditModal(project)}
-                            className="p-2 bg-primary/10 border border-primary/30 text-primary rounded-button hover:bg-primary/20 hover:shadow-glow transition-all"
-                            title="수정"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          {/* 삭제 버튼 */}
+                </thead>
+                <tbody>
+                  {projects.length === 0 ? (
+                    <tr>
+                      <td colSpan={2} className="py-12 text-center text-soft-blue/60">
+                        등록된 사업이 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    projects.map((project) => (
+                      <tr 
+                        key={project.id} 
+                        className="border-b border-soft-blue/10 hover:bg-soft-blue/5 transition-colors"
+                      >
+                        <td className="py-4 text-white font-medium">{project.name}</td>
+                        <td className="py-4">
+                          <div className="flex items-center justify-end gap-2">
+                            {/* 수정 버튼 */}
+                            <button
+                              onClick={() => handleOpenEditModal(project)}
+                              disabled={saving}
+                              className="p-2 bg-primary/10 border border-primary/30 text-primary rounded-button hover:bg-primary/20 hover:shadow-glow transition-all disabled:opacity-50"
+                              title="수정"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          {/* 삭제 버튼 (admin만 활성화) */}
                           <button
                             onClick={() => handleDeleteProject(project)}
-                            className="p-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-button hover:bg-red-500/20 transition-all"
-                            title="삭제"
+                            disabled={saving || !isAdmin}
+                            className={`p-2 border rounded-button transition-all ${
+                              isAdmin
+                                ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
+                                : 'bg-gray-500/10 border-gray-500/30 text-gray-500 cursor-not-allowed'
+                            } disabled:opacity-50`}
+                            title={isAdmin ? '삭제' : '관리자만 삭제할 수 있습니다'}
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
@@ -218,9 +306,20 @@ const ProjectListPage = () => {
                     </button>
                     <button
                       onClick={editingProject ? handleUpdateProject : handleAddProject}
-                      className="px-6 py-2.5 bg-primary text-white rounded-button hover:bg-primary/90 hover:shadow-glow transition-all font-semibold"
+                      disabled={saving}
+                      className="px-6 py-2.5 bg-primary text-white rounded-button hover:bg-primary/90 hover:shadow-glow transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
-                      {editingProject ? '수정' : '추가'}
+                      {saving ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          처리 중...
+                        </>
+                      ) : (
+                        editingProject ? '수정' : '추가'
+                      )}
                     </button>
                   </div>
                 </Dialog.Panel>

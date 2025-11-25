@@ -207,9 +207,46 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
       // 이미지 리사이징 및 base64 변환
       const base64Url = await resizeImage(file, 1200, 1600, 0.9)
       
-      // Zustand store에 저장
+      // Zustand store에 저장 (즉시 미리보기용)
       // 이미지 업로드 시 원본 이미지 URL도 함께 저장
       setImage(pageIndex, slotIndex, base64Url, '', base64Url)
+
+      // Picture Set이 있으면 자동으로 Storage에 업로드
+      const { currentPictureSetId } = useStore.getState()
+      if (currentPictureSetId) {
+        try {
+          const { uploadImage: uploadImageAPI } = await import('../lib/api/upload')
+          const uploadResult = await uploadImageAPI(
+            currentPictureSetId,
+            pageIndex,
+            slotIndex,
+            base64Url
+          )
+
+          if (uploadResult.success) {
+            // 업로드된 Storage URL로 업데이트
+            setImage(
+              pageIndex,
+              slotIndex,
+              uploadResult.data.url,
+              '',
+              base64Url // 원본은 base64로 유지
+            )
+          } else {
+            const errorMsg = uploadResult.error || '이미지 업로드에 실패했습니다.'
+            console.warn('이미지 자동 업로드 실패:', errorMsg)
+            // 업로드 실패해도 base64는 유지 (사용자에게는 조용히 실패 처리)
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('자동 업로드 실패 상세:', errorMsg)
+            }
+          }
+        } catch (uploadError) {
+          console.error('이미지 업로드 API 오류:', uploadError)
+          // 네트워크 에러 등은 조용히 처리 (base64는 유지)
+          if (process.env.NODE_ENV === 'development') {
+            console.error('업로드 API 오류 상세:', uploadError)
+          }
+      }
     } catch (error) {
       console.error('이미지 업로드 실패:', error)
       const errorMessage = error.message || '이미지 업로드에 실패했습니다.'
