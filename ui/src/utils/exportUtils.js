@@ -137,7 +137,21 @@ export const exportToPDF = async (canvasElement, filename = 'document', highQual
     pdf.save(`${filename}.pdf`)
   } catch (error) {
     console.error('PDF 변환 실패:', error)
-    throw new Error('PDF 변환에 실패했습니다.')
+    
+    // 구체적인 에러 메시지 제공
+    let errorMessage = 'PDF 변환에 실패했습니다.'
+    
+    if (error.message) {
+      if (error.message.includes('Canvas') || error.message.includes('요소를 찾을 수 없습니다')) {
+        errorMessage = 'Canvas 요소를 찾을 수 없습니다. 페이지를 새로고침해주세요.'
+      } else if (error.message.includes('memory') || error.message.includes('Memory')) {
+        errorMessage = '메모리 부족으로 PDF 변환에 실패했습니다. 이미지 크기를 줄여주세요.'
+      } else {
+        errorMessage = `PDF 변환 실패: ${error.message}`
+      }
+    }
+    
+    throw new Error(errorMessage)
   }
 }
 
@@ -218,7 +232,21 @@ export const exportToJPEG = async (canvasElement, filename = 'document', highQua
     link.click()
   } catch (error) {
     console.error('JPEG 변환 실패:', error)
-    throw new Error('JPEG 변환에 실패했습니다.')
+    
+    // 구체적인 에러 메시지 제공
+    let errorMessage = 'JPEG 변환에 실패했습니다.'
+    
+    if (error.message) {
+      if (error.message.includes('Canvas') || error.message.includes('요소를 찾을 수 없습니다')) {
+        errorMessage = 'Canvas 요소를 찾을 수 없습니다. 페이지를 새로고침해주세요.'
+      } else if (error.message.includes('memory') || error.message.includes('Memory')) {
+        errorMessage = '메모리 부족으로 JPEG 변환에 실패했습니다. 이미지 크기를 줄여주세요.'
+      } else {
+        errorMessage = `JPEG 변환 실패: ${error.message}`
+      }
+    }
+    
+    throw new Error(errorMessage)
   }
 }
 
@@ -338,7 +366,21 @@ export const exportAllPagesToPDF = async (canvasElements, filename = 'document',
     pdf.save(`${filename}.pdf`)
   } catch (error) {
     console.error('PDF 변환 실패:', error)
-    throw new Error('PDF 변환에 실패했습니다.')
+    
+    // 구체적인 에러 메시지 제공
+    let errorMessage = 'PDF 변환에 실패했습니다.'
+    
+    if (error.message) {
+      if (error.message.includes('Canvas') || error.message.includes('요소를 찾을 수 없습니다')) {
+        errorMessage = 'Canvas 요소를 찾을 수 없습니다. 페이지를 새로고침해주세요.'
+      } else if (error.message.includes('memory') || error.message.includes('Memory')) {
+        errorMessage = '메모리 부족으로 PDF 변환에 실패했습니다. 이미지 크기를 줄여주세요.'
+      } else {
+        errorMessage = `PDF 변환 실패: ${error.message}`
+      }
+    }
+    
+    throw new Error(errorMessage)
   }
 }
 

@@ -6,6 +6,7 @@ import EditPage from './pages/EditPage'
 import ProjectListPage from './pages/ProjectListPage'
 import AdminPage from './pages/AdminPage'
 import Login from './pages/Login'
+import DiagnosticsPage from './pages/DiagnosticsPage'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route path="edit/:id" element={<EditPage />} />
         <Route path="projects" element={<ProjectListPage />} />
         <Route path="admin" element={<AdminPage />} />
+        <Route path="diagnostics" element={<DiagnosticsPage />} />
       </Route>
     </Routes>
   )

@@ -1,4 +1,4 @@
-import { useRef, useCallback, forwardRef, useState, useEffect } from 'react'
+import { useRef, useCallback, forwardRef, useState, useEffect, useMemo } from 'react'
 import useStore from '../store/useStore'
 import { resizeImage } from '../hooks/useImageEditor'
 import ImageCropModal from './ImageCropModal'
@@ -46,9 +46,12 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
   const fileInputRefs = useRef({})
   
   // 커스텀 템플릿의 경우 슬롯 배열 사용
-  const slotsToRender = layoutType === 'custom' 
-    ? ((customSlots && customSlots[pageIndex]) || [])
-    : Array.from({ length: actualSlotCount }).map((_, i) => ({ id: i, index: i }))
+  const slotsToRender = useMemo(() => {
+    if (layoutType === 'custom') {
+      return (customSlots && customSlots[pageIndex]) || []
+    }
+    return Array.from({ length: actualSlotCount }).map((_, i) => ({ id: i, index: i }))
+  }, [layoutType, customSlots, pageIndex, actualSlotCount])
   
   // 드래그 리사이즈 핸들러
   const handleResizeStart = useCallback((e, slotIndex, direction) => {
@@ -141,9 +144,11 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
   useEffect(() => {
     return () => {
       // 모든 file input 요소 제거
-      Object.values(fileInputRefs.current).forEach(input => {
-        if (input && input.parentNode) {
-          input.parentNode.removeChild(input)
+      Object.values(fileInputRefs.current).forEach(ref => {
+        if (ref && typeof ref === 'object' && ref.cleanup) {
+          ref.cleanup()
+        } else if (ref && ref.parentNode) {
+          ref.parentNode.removeChild(ref)
         }
       })
       fileInputRefs.current = {}
@@ -315,23 +320,36 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
     } else {
       // 이미지가 없으면 파일 선택
       if (!fileInputRefs.current[slotIndex]) {
-        fileInputRefs.current[slotIndex] = document.createElement('input')
-        fileInputRefs.current[slotIndex].type = 'file'
-        // HEIC 파일도 허용
-        fileInputRefs.current[slotIndex].accept = 'image/*,.heic,.heif'
-        fileInputRefs.current[slotIndex].style.display = 'none'
-        fileInputRefs.current[slotIndex].addEventListener('change', (e) => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/*,.heic,.heif'
+        input.style.display = 'none'
+        
+        const handleChange = (e) => {
           handleFileSelect(e, slotIndex)
-        })
-        document.body.appendChild(fileInputRefs.current[slotIndex])
+        }
+        
+        input.addEventListener('change', handleChange)
+        document.body.appendChild(input)
+        
+        // ref에 input과 cleanup 함수 저장
+        fileInputRefs.current[slotIndex] = {
+          element: input,
+          cleanup: () => {
+            input.removeEventListener('change', handleChange)
+            if (input.parentNode) {
+              input.parentNode.removeChild(input)
+            }
+          }
+        }
       }
-      fileInputRefs.current[slotIndex].click()
+      fileInputRefs.current[slotIndex].element.click()
     }
   }, [handleImageClick, handleFileSelect, getImageForSlot])
 
 
   // 커스텀 템플릿의 경우 grid 자동 계산
-  const getCustomGridStyle = () => {
+  const customGridStyle = useMemo(() => {
     if (layoutType !== 'custom' || slotsToRender.length === 0) return {}
     const count = slotsToRender.length
     let cols = Math.ceil(Math.sqrt(count))
@@ -340,10 +358,10 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
       gridTemplateRows: `repeat(${rows}, 1fr)`,
       gridTemplateColumns: `repeat(${cols}, 1fr)`
     }
-  }
+  }, [layoutType, slotsToRender.length])
   
   // 커스텀 슬롯의 grid 스타일 계산
-  const getSlotGridStyle = (slot) => {
+  const getSlotGridStyle = useCallback((slot) => {
     if (layoutType !== 'custom' || !slot) return {}
     // CSS Grid span은 정수만 받으므로, 소수점 값은 올림 처리
     const width = Math.max(1, Math.ceil(slot.width || 1))
@@ -352,7 +370,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
       gridColumn: `span ${width}`,
       gridRow: `span ${height}`
     }
-  }
+  }, [layoutType])
 
   return (
     <>
@@ -420,7 +438,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
             className="grid gap-2 w-full flex-1 min-h-0"
             style={
               layoutType === 'custom' 
-                ? getCustomGridStyle()
+                ? customGridStyle
                 : {
                     gridTemplateRows: `repeat(${rows}, 1fr)`,
                     gridTemplateColumns: `repeat(${cols}, 1fr)`

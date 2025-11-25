@@ -31,7 +31,11 @@ const ImageCropModal = () => {
       
       // 이미지가 로드되면 기본 cropAreaPixels 설정
       const img = new Image()
+      let isMounted = true
+      
       img.onload = () => {
+        if (!isMounted) return
+        
         // 이미지 크기에 맞춰 기본 cropAreaPixels 설정
         const defaultCropArea = {
           x: 0,
@@ -41,7 +45,21 @@ const ImageCropModal = () => {
         }
         setCropAreaPixels(defaultCropArea)
       }
+      
+      img.onerror = () => {
+        if (!isMounted) return
+        console.error('이미지 로드 실패:', imageUrl)
+      }
+      
       img.src = imageUrl
+      
+      // cleanup
+      return () => {
+        isMounted = false
+        img.onload = null
+        img.onerror = null
+        img.src = ''
+      }
     }
   }, [isOpen, imageUrl])
 
@@ -78,19 +96,43 @@ const ImageCropModal = () => {
     if (!finalCropAreaPixels) {
       // 이미지 크기를 가져와서 전체 영역을 cropAreaPixels로 설정
       const img = new Image()
-      await new Promise((resolve, reject) => {
-        img.onload = () => {
-          finalCropAreaPixels = {
-            x: 0,
-            y: 0,
-            width: img.naturalWidth,
-            height: img.naturalHeight
+      let isCancelled = false
+      
+      try {
+        await new Promise((resolve, reject) => {
+          img.onload = () => {
+            if (isCancelled) {
+              reject(new Error('취소됨'))
+              return
+            }
+            
+            finalCropAreaPixels = {
+              x: 0,
+              y: 0,
+              width: img.naturalWidth,
+              height: img.naturalHeight
+            }
+            resolve()
           }
-          resolve()
+          img.onerror = () => {
+            if (!isCancelled) {
+              reject(new Error('이미지 로드 실패'))
+            }
+          }
+          img.src = imageUrl
+        })
+      } catch (error) {
+        if (!isCancelled) {
+          throw error
         }
-        img.onerror = reject
-        img.src = imageUrl
-      })
+        return
+      } finally {
+        // cleanup
+        img.onload = null
+        img.onerror = null
+        img.src = ''
+        isCancelled = true
+      }
     }
 
     setIsSaving(true)
@@ -117,8 +159,9 @@ const ImageCropModal = () => {
         0.9
       )
 
-      // 편집된 이미지만 저장, 원본은 유지
-      setImage(pageIndex, normalizedSlotIndex, editedImageUrl, '', originalUrl)
+      // 편집된 이미지만 저장, 원본은 유지 (기존 description 유지)
+      const existingDescription = existingSlot?.description || ''
+      setImage(pageIndex, normalizedSlotIndex, editedImageUrl, existingDescription, originalUrl)
       
       // 모달 닫기
       closeEditModal()

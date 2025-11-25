@@ -81,19 +81,23 @@ const ImageEditModal = () => {
       const croppedImageUrl = await getCroppedImgFromPixels(
         imageUrl,
         cropArea,
-        rotation,
+        localRotation, // localRotation 사용
         0.9
       )
 
       // Zustand store에 저장 (원본 이미지 URL 유지)
       // imageUrl은 원본 이미지이므로 originalUrl로 저장
       const storeState = useStore.getState()
-      const existingImage = storeState.images.find(
-        img => img.pageIndex === pageIndex && img.slotIndex === slotIndex
-      )
-      const originalUrl = existingImage?.originalUrl || imageUrl
+      // pages 구조에서 기존 이미지 찾기
+      const page = storeState.pages.find(p => p.pageIndex === pageIndex)
+      const existingSlot = page?.slots.find(slot => {
+        const slotIdx = typeof slot.slotIndex === 'number' ? slot.slotIndex : Number(slot.slotIndex)
+        const normalizedSlotIndex = typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
+        return slotIdx === normalizedSlotIndex
+      })
+      const originalUrl = existingSlot?.originalUrl || imageUrl
       
-      setImage(pageIndex, slotIndex, croppedImageUrl, '', originalUrl)
+      setImage(pageIndex, slotIndex, croppedImageUrl, existingSlot?.description || '', originalUrl)
       
       // 모달 닫기
       closeEditModal()
@@ -236,7 +240,7 @@ const ImageEditModal = () => {
                         회전
                       </label>
                       <span className="text-sm text-soft-blue/70 font-medium">
-                        {rotation}°
+                        {localRotation}°
                       </span>
                     </div>
                     <div className="relative">
@@ -245,7 +249,7 @@ const ImageEditModal = () => {
                         min="0"
                         max="360"
                         step="1"
-                        value={rotation}
+                        value={localRotation}
                         onChange={(e) => handleRotationChange(parseInt(e.target.value))}
                         className="w-full h-2 bg-soft-blue/20 rounded-lg appearance-none cursor-pointer"
                         style={{

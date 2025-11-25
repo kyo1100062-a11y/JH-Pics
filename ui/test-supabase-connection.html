@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supabase 연결 테스트</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #e0e0e0;
+    }
+    .container {
+      background: #16213e;
+      padding: 30px;
+      border-radius: 10px;
+      border: 2px solid #0f3460;
+    }
+    h1 {
+      color: #4a9eff;
+      margin-bottom: 20px;
+    }
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #0f3460;
+      border-radius: 5px;
+    }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .warning { color: #fbbf24; }
+    button {
+      background: #4a9eff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #3a8eef;
+    }
+    button:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+    pre {
+      background: #0a1929;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+    .status {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 3px;
+      margin: 5px 0;
+    }
+    .status.ok { background: #065f46; color: #d1fae5; }
+    .status.fail { background: #991b1b; color: #fee2e2; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Supabase 연결 테스트</h1>
+    
+    <div class="section">
+      <h2>1. 환경변수 확인</h2>
+      <div id="envStatus">확인 중...</div>
+    </div>
+    
+    <div class="section">
+      <h2>2. 연결 테스트</h2>
+      <button onclick="runTests()">전체 테스트 실행</button>
+      <button onclick="testAuth()">Auth 테스트</button>
+      <button onclick="testStorage()">Storage 테스트</button>
+      <button onclick="testDatabase()">Database 테스트</button>
+      <div id="testResults"></div>
+    </div>
+    
+    <div class="section">
+      <h2>3. 테스트 결과</h2>
+      <pre id="results"></pre>
+    </div>
+  </div>
+
+  <script type="module">
+    // 환경변수는 Vite에서만 접근 가능하므로, 
+    // 실제로는 브라우저 콘솔에서 실행해야 합니다.
+    
+    window.runTests = async function() {
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.textContent = '테스트 실행 중...\n\n';
+      
+      try {
+        // Supabase 클라이언트 동적 import
+        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+        
+        // 환경변수는 실제로는 Vite 빌드 시 주입되므로,
+        // 여기서는 사용자에게 입력받거나 확인 메시지 표시
+        resultsDiv.textContent += '⚠️ 이 페이지는 브라우저 콘솔에서 직접 테스트해야 합니다.\n';
+        resultsDiv.textContent += '\n브라우저 콘솔에서 다음 코드를 실행하세요:\n\n';
+        resultsDiv.textContent += `import { runFullDiagnostics } from './src/utils/connectionTest'
+const result = await runFullDiagnostics()
+console.log(result)`;
+        
+      } catch (error) {
+        resultsDiv.textContent += `❌ 오류: ${error.message}\n`;
+      }
+    };
+    
+    window.testAuth = async function() {
+      document.getElementById('results').textContent = 'Auth 테스트는 브라우저 콘솔에서 실행하세요.';
+    };
+    
+    window.testStorage = async function() {
+      document.getElementById('results').textContent = 'Storage 테스트는 브라우저 콘솔에서 실행하세요.';
+    };
+    
+    window.testDatabase = async function() {
+      document.getElementById('results').textContent = 'Database 테스트는 브라우저 콘솔에서 실행하세요.';
+    };
+    
+    // 환경변수 상태 확인 (Vite 환경에서만 작동)
+    const envStatus = document.getElementById('envStatus');
+    try {
+      // Vite 환경변수는 import.meta.env로 접근
+      // 하지만 이 HTML 파일은 직접 열면 접근 불가
+      envStatus.innerHTML = `
+        <div class="status warning">⚠️ 이 페이지는 개발 서버에서 실행해야 합니다.</div>
+        <p>다음 명령어로 개발 서버를 실행하세요:</p>
+        <pre>cd ui && npm run dev</pre>
+        <p>그 다음 브라우저에서 <code>http://localhost:5173/diagnostics</code> 접속</p>
+      `;
+    } catch (error) {
+      envStatus.innerHTML = `<div class="status fail">❌ 환경변수 확인 실패: ${error.message}</div>`;
+    }
+  </script>
+</body>
+</html>
+

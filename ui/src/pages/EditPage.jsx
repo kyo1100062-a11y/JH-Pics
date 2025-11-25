@@ -1,15 +1,15 @@
 // ============================================
 // EditPage - Supabase API 완전 통합 버전
 // ============================================
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import A4Canvas from '../components/A4Canvas'
 import useStore from '../store/useStore'
 import { exportToPDF, exportToJPEG, exportAllPagesToPDF } from '../utils/exportUtils'
 import { getProjects } from '../lib/api/projects'
-import { getPictureSets } from '../lib/api/pictureSets'
 import { uploadImage } from '../utils/uploadImage'
 import { savePictureSet } from '../utils/savePictureSet'
+import { loadPictureSet } from '../utils/loadPictureSet'
 
 const EditPage = () => {
   const { id } = useParams() // picture_set_id 또는 'new'
@@ -25,6 +25,11 @@ const EditPage = () => {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
   const [uploadingImages, setUploadingImages] = useState(false)
+  
+  // 타이머 refs (cleanup을 위한)
+  const projectNameTimeoutRef = useRef(null)
+  const retryTimeoutRef = useRef(null)
+  const saveTimeoutRef = useRef(null)
   
   // Zustand store
   const {
@@ -42,7 +47,8 @@ const EditPage = () => {
     setCurrentPictureSetId,
     setProjects,
     setPages,
-    setMetadata
+    setMetadata,
+    setImage
   } = useStore()
 
   // ============================================
@@ -58,10 +64,16 @@ const EditPage = () => {
       if (result.success) {
         setProjects(result.data)
       } else {
-        console.error('프로젝트 로드 실패:', result.error)
+        const errorMsg = result.error || '프로젝트 목록을 불러오는데 실패했습니다.'
+        console.error('프로젝트 로드 실패:', errorMsg)
+        // 사용자에게 조용히 알림 (alert는 너무 공격적이므로 console만 사용)
+        // 필요시 toast 라이브러리 도입 권장
       }
     } catch (error) {
       console.error('프로젝트 로드 오류:', error)
+      const errorMessage = error.message || '프로젝트 목록을 불러오는데 실패했습니다.'
+      // 사용자에게 조용히 알림
+      // 필요시 toast 라이브러리 도입 권장
     }
   }
 
@@ -79,63 +91,139 @@ const EditPage = () => {
   // ============================================
   useEffect(() => {
     if (id && id !== 'new') {
-      loadPictureSet(id)
+      handleLoadPictureSet(id)
     }
-  }, [id])
+  }, [id, handleLoadPictureSet])
 
-  const loadPictureSet = async (pictureSetId) => {
+  const handleLoadPictureSet = useCallback(async (pictureSetId) => {
     setLoading(true)
     try {
-      const result = await getPictureSets()
-      if (result.success) {
-        const pictureSet = result.data.find(ps => ps.id === pictureSetId)
-        if (pictureSet) {
-          // DB 데이터를 Store에 매핑
-          setCurrentPictureSetId(pictureSet.id)
-          setPages(pictureSet.pages || [{ pageIndex: 0, slots: [] }])
-          setMetadata({
-            title: pictureSet.title || '현장 확인 사진',
-            projectId: pictureSet.project_id || '',
-            projectName: '', // 프로젝트 이름은 projects에서 찾아서 설정
-            farmerName: pictureSet.farmer_name || '',
-            managerName: pictureSet.manager_name || ''
-          })
+      // 1. Supabase에서 Picture Set 조회
+      const result = await loadPictureSet(pictureSetId)
+      
+      if (!result.success) {
+        const errorMsg = result.error || 'Picture Set을 불러오는데 실패했습니다.'
+        alert(errorMsg)
+        
+        // 데이터가 없으면 빈 템플릿 유지
+        if (result.error && result.error.includes('찾을 수 없습니다')) {
+          // 빈 템플릿으로 유지하고 계속 진행
+          console.warn('Picture Set을 찾을 수 없습니다. 빈 템플릿을 유지합니다.')
+        } else {
+          // 다른 오류인 경우 업로드 페이지로 이동
+          navigate('/upload')
+        }
+        return
+      }
+
+      const pictureSet = result.data
+      if (!pictureSet) {
+        alert('Picture Set 데이터를 찾을 수 없습니다.')
+        return
+      }
+
+      // 2. Picture Set ID 저장
+      setCurrentPictureSetId(pictureSet.id)
+
+      // 3. 메타데이터 설정
+      setMetadata({
+        title: pictureSet.title || '현장 확인 사진',
+        projectId: pictureSet.project_id || '',
+        projectName: '', // 프로젝트 이름은 projects에서 찾아서 설정
+        farmerName: pictureSet.farmer_name || '',
+        managerName: pictureSet.manager_name || ''
+      })
+
+      // 프로젝트 이름 설정 (projects가 로드된 후에만)
+      if (pictureSet.project_id) {
+        const currentProjects = useStore.getState().projects
+        if (currentProjects.length > 0) {
+          const project = currentProjects.find(p => p.id === pictureSet.project_id)
+          if (project) {
+            updateMetadata({ projectName: project.name })
+          }
+        } else {
+          // 기존 timeout 취소
+          if (projectNameTimeoutRef.current) {
+            clearTimeout(projectNameTimeoutRef.current)
+          }
           
-          // 프로젝트 이름 설정 (projects가 로드된 후에만)
-          if (pictureSet.project_id) {
-            const currentProjects = useStore.getState().projects
-            if (currentProjects.length > 0) {
-              const project = currentProjects.find(p => p.id === pictureSet.project_id)
+          // projects가 아직 로드되지 않았으면, 잠시 후 다시 시도
+          projectNameTimeoutRef.current = setTimeout(() => {
+            const updatedProjects = useStore.getState().projects
+            if (updatedProjects.length > 0) {
+              const project = updatedProjects.find(p => p.id === pictureSet.project_id)
               if (project) {
                 updateMetadata({ projectName: project.name })
               }
-            } else {
-              // projects가 아직 로드되지 않았으면, 잠시 후 다시 시도
-              setTimeout(() => {
-                const updatedProjects = useStore.getState().projects
-                if (updatedProjects.length > 0) {
-                  const project = updatedProjects.find(p => p.id === pictureSet.project_id)
-                  if (project) {
-                    updateMetadata({ projectName: project.name })
-                  }
-                }
-              }, 500)
             }
-          }
-        } else {
-          alert('Picture Set을 찾을 수 없습니다.')
-          navigate('/upload')
+            projectNameTimeoutRef.current = null
+          }, 500)
         }
-      } else {
-        alert(result.error || 'Picture Set을 불러오는데 실패했습니다.')
       }
+
+      // 4. pages 데이터 설정
+      if (pictureSet.pages && Array.isArray(pictureSet.pages) && pictureSet.pages.length > 0) {
+        // pages가 있으면 설정
+        setPages(pictureSet.pages)
+        
+        // 5. 각 슬롯에 이미지 URL과 description 자동 로드
+        pictureSet.pages.forEach((page) => {
+          if (page.slots && Array.isArray(page.slots)) {
+            page.slots.forEach((slot) => {
+              // 이미지 URL이 있으면 슬롯에 설정
+              if (slot.url) {
+                setImage(
+                  page.pageIndex,
+                  slot.slotIndex,
+                  slot.url,
+                  slot.description || '',
+                  slot.originalUrl || slot.url
+                )
+              } else if (slot.description) {
+                // 이미지는 없지만 description이 있는 경우
+                setImage(
+                  page.pageIndex,
+                  slot.slotIndex,
+                  '',
+                  slot.description,
+                  null
+                )
+              }
+            })
+          }
+        })
+      } else {
+        // pages가 없거나 빈 배열이면 빈 템플릿 유지
+        console.log('Picture Set에 pages 데이터가 없습니다. 빈 템플릿을 유지합니다.')
+        // 기존 pages 유지 (변경하지 않음)
+      }
+
     } catch (error) {
       console.error('Picture Set 로드 오류:', error)
-      alert('Picture Set을 불러오는데 실패했습니다.')
+      let errorMessage = 'Picture Set을 불러오는데 실패했습니다.'
+      
+      // 구체적인 에러 메시지 제공
+      if (error.message) {
+        if (error.message.includes('네트워크') || error.message.includes('Network')) {
+          errorMessage = '네트워크 연결을 확인해주세요. 인터넷 연결이 불안정할 수 있습니다.'
+        } else if (error.message.includes('인증') || error.message.includes('Unauthorized')) {
+          errorMessage = '로그인이 필요합니다. 다시 로그인해주세요.'
+        } else if (error.message.includes('권한') || error.message.includes('Forbidden')) {
+          errorMessage = '조회 권한이 없습니다. 로그인 상태와 RLS 정책을 확인해주세요.'
+        } else {
+          errorMessage = `로드 실패: ${error.message}`
+        }
+      }
+      
+      alert(errorMessage)
+      
+      // 데이터 없으면 빈 템플릿 유지 (에러 발생해도 계속 진행)
+      console.warn('Picture Set 로드 중 오류 발생. 빈 템플릿을 유지합니다.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [navigate, setCurrentPictureSetId, setMetadata, setPages, updateMetadata])
 
   // ============================================
   // 저장 기능
@@ -270,8 +358,16 @@ const EditPage = () => {
       // 네트워크 에러인 경우 재시도 옵션 제공
       if (error.message && (error.message.includes('네트워크') || error.message.includes('Network'))) {
         if (confirm('네트워크 오류가 발생했습니다. 다시 시도하시겠습니까?')) {
+          // 기존 timeout 취소
+          if (retryTimeoutRef.current) {
+            clearTimeout(retryTimeoutRef.current)
+          }
+          
           // 재시도
-          setTimeout(() => handleSave(), 1000)
+          retryTimeoutRef.current = setTimeout(() => {
+            handleSave()
+            retryTimeoutRef.current = null
+          }, 1000)
         }
       }
     } finally {
@@ -283,25 +379,25 @@ const EditPage = () => {
   // ============================================
   // 페이지 추가/삭제 시 자동 저장 (debounce)
   // ============================================
-  const [saveTimeout, setSaveTimeout] = useState(null)
-
   useEffect(() => {
     // 기존 Picture Set이 있을 때만 자동 저장
     if (currentPictureSetId && pages.length > 0) {
-      // 이전 타이머 취소
-      if (saveTimeout) {
-        clearTimeout(saveTimeout)
+      // 기존 timeout 취소
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
       }
 
       // 2초 후 자동 저장
-      const timer = setTimeout(() => {
+      saveTimeoutRef.current = setTimeout(() => {
         handleSave()
+        saveTimeoutRef.current = null
       }, 2000)
 
-      setSaveTimeout(timer)
-
       return () => {
-        if (timer) clearTimeout(timer)
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current)
+          saveTimeoutRef.current = null
+        }
       }
     }
   }, [pages, currentPictureSetId, handleSave]) // pages 변경 시 자동 저장
@@ -319,13 +415,13 @@ const EditPage = () => {
   // ============================================
   // 출력 기능
   // ============================================
-  const generateFilename = () => {
+  const generateFilename = useMemo(() => {
     const parts = []
     if (metadata.title) parts.push(metadata.title)
     if (metadata.projectName) parts.push(metadata.projectName)
     if (metadata.farmerName) parts.push(metadata.farmerName)
     return parts.length > 0 ? parts.join('-') : 'document'
-  }
+  }, [metadata.title, metadata.projectName, metadata.farmerName])
 
   const handleExportPDF = async () => {
     try {
@@ -335,8 +431,7 @@ const EditPage = () => {
         return
       }
 
-      const filename = generateFilename()
-      await exportAllPagesToPDF(canvasElements, filename, highQuality, currentTemplate)
+      await exportAllPagesToPDF(canvasElements, generateFilename, highQuality, currentTemplate)
     } catch (error) {
       console.error('PDF 출력 실패:', error)
       alert('PDF 출력에 실패했습니다.')
@@ -351,8 +446,7 @@ const EditPage = () => {
         return
       }
 
-      const filename = generateFilename()
-      await exportToJPEG(canvasElement, filename, highQuality)
+      await exportToJPEG(canvasElement, generateFilename, highQuality)
     } catch (error) {
       console.error('JPEG 출력 실패:', error)
       alert('JPEG 출력에 실패했습니다.')
@@ -362,25 +456,25 @@ const EditPage = () => {
   // ============================================
   // 메타데이터 업데이트
   // ============================================
-  const handleTitleChange = (title) => {
+  const handleTitleChange = useCallback((title) => {
     updateMetadata({ title })
-  }
+  }, [updateMetadata])
 
-  const handleProjectChange = (projectId) => {
+  const handleProjectChange = useCallback((projectId) => {
     const selectedProject = projects.find(p => p.id === projectId)
     updateMetadata({ 
       projectId,
       projectName: selectedProject ? selectedProject.name : ''
     })
-  }
+  }, [projects, updateMetadata])
 
-  const handleFarmerNameChange = (farmerName) => {
+  const handleFarmerNameChange = useCallback((farmerName) => {
     updateMetadata({ farmerName })
-  }
+  }, [updateMetadata])
 
-  const handleManagerNameChange = (managerName) => {
+  const handleManagerNameChange = useCallback((managerName) => {
     updateMetadata({ managerName })
-  }
+  }, [updateMetadata])
 
   // projects가 로드된 후 프로젝트 이름 자동 설정
   useEffect(() => {
@@ -392,6 +486,24 @@ const EditPage = () => {
       }
     }
   }, [projects, metadata.projectId, metadata.projectName, updateMetadata])
+
+  // 컴포넌트 언마운트 시 모든 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (projectNameTimeoutRef.current) {
+        clearTimeout(projectNameTimeoutRef.current)
+        projectNameTimeoutRef.current = null
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+        retryTimeoutRef.current = null
+      }
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+        saveTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   // 로딩 중 표시
   if (loading) {
