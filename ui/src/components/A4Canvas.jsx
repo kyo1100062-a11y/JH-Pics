@@ -246,6 +246,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
           if (process.env.NODE_ENV === 'development') {
             console.error('업로드 API 오류 상세:', uploadError)
           }
+        }
       }
     } catch (error) {
       console.error('이미지 업로드 실패:', error)
@@ -708,30 +709,6 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                           {/* 하단 중간 핸들 */}
                           <div
                             className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-2 bg-blue-500/80 hover:bg-blue-600 cursor-ns-resize z-20 export-control"
-                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 's')}
-                            style={{ cursor: 'ns-resize' }}
-                          />
-                        </>
-                      )}
-                      
-                      {/* 커스텀 템플릿: 빈 슬롯 드래그 리사이즈 핸들 */}
-                      {layoutType === 'custom' && (
-                        <>
-                          {/* 우측 하단 모서리 핸들 */}
-                          <div
-                            className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500/80 hover:bg-blue-600 cursor-nwse-resize z-20"
-                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'se')}
-                            style={{ cursor: 'nwse-resize' }}
-                          />
-                          {/* 우측 중간 핸들 */}
-                          <div
-                            className="absolute top-1/2 right-0 -translate-y-1/2 w-2 h-8 bg-blue-500/80 hover:bg-blue-600 cursor-ew-resize z-20"
-                            onMouseDown={(e) => handleResizeStart(e, slotIndex, 'e')}
-                            style={{ cursor: 'ew-resize' }}
-                          />
-                          {/* 하단 중간 핸들 */}
-                          <div
-                            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-2 bg-blue-500/80 hover:bg-blue-600 cursor-ns-resize z-20"
                             onMouseDown={(e) => handleResizeStart(e, slotIndex, 's')}
                             style={{ cursor: 'ns-resize' }}
                           />

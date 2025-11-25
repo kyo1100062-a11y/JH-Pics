@@ -100,11 +100,25 @@ const EditPage = () => {
             managerName: pictureSet.manager_name || ''
           })
           
-          // 프로젝트 이름 설정
+          // 프로젝트 이름 설정 (projects가 로드된 후에만)
           if (pictureSet.project_id) {
-            const project = projects.find(p => p.id === pictureSet.project_id)
-            if (project) {
-              updateMetadata({ projectName: project.name })
+            const currentProjects = useStore.getState().projects
+            if (currentProjects.length > 0) {
+              const project = currentProjects.find(p => p.id === pictureSet.project_id)
+              if (project) {
+                updateMetadata({ projectName: project.name })
+              }
+            } else {
+              // projects가 아직 로드되지 않았으면, 잠시 후 다시 시도
+              setTimeout(() => {
+                const updatedProjects = useStore.getState().projects
+                if (updatedProjects.length > 0) {
+                  const project = updatedProjects.find(p => p.id === pictureSet.project_id)
+                  if (project) {
+                    updateMetadata({ projectName: project.name })
+                  }
+                }
+              }, 500)
             }
           }
         } else {
@@ -288,7 +302,7 @@ const EditPage = () => {
         if (timer) clearTimeout(timer)
       }
     }
-  }, [pages, currentPictureSetId]) // pages 변경 시 자동 저장
+  }, [pages, currentPictureSetId, handleSave]) // pages 변경 시 자동 저장
 
   // 페이지 추가
   const handleAddPage = () => {
@@ -365,6 +379,17 @@ const EditPage = () => {
   const handleManagerNameChange = (managerName) => {
     updateMetadata({ managerName })
   }
+
+  // projects가 로드된 후 프로젝트 이름 자동 설정
+  useEffect(() => {
+    // projects가 로드되고, metadata.projectId가 있지만 projectName이 없을 때
+    if (projects.length > 0 && metadata.projectId && !metadata.projectName) {
+      const project = projects.find(p => p.id === metadata.projectId)
+      if (project) {
+        updateMetadata({ projectName: project.name })
+      }
+    }
+  }, [projects, metadata.projectId, metadata.projectName, updateMetadata])
 
   // 로딩 중 표시
   if (loading) {
@@ -451,26 +476,26 @@ const EditPage = () => {
         <div className="flex items-center gap-2 overflow-x-auto">
           {/* 페이지 탭들 */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {pages.map((page, index) => (
+            {pages.map((page) => (
               <div
-                key={index}
+                key={page.pageIndex}
                 className={`group relative flex items-center gap-2 px-4 py-2.5 rounded-button text-sm font-semibold transition-all cursor-pointer min-w-fit ${
-                  currentPageIndex === index
+                  currentPageIndex === page.pageIndex
                     ? 'bg-primary text-white shadow-glow'
                     : 'bg-deep-blue/50 border-2 border-soft-blue/30 text-soft-blue hover:border-primary hover:bg-soft-blue/10'
                 }`}
-                onClick={() => setCurrentPage(index)}
+                onClick={() => setCurrentPage(page.pageIndex)}
               >
-                <span>페이지 {index + 1}</span>
+                <span>페이지 {page.pageIndex + 1}</span>
                 {/* 삭제 버튼 (2페이지 이상일 때만 표시) */}
                 {pages.length > 1 && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleDeletePage(index)
+                      handleDeletePage(page.pageIndex)
                     }}
                     className={`ml-1 p-0.5 rounded transition-all ${
-                      currentPageIndex === index
+                      currentPageIndex === page.pageIndex
                         ? 'hover:bg-white/20 text-white'
                         : 'hover:bg-soft-blue/20 text-soft-blue/70'
                     }`}
