@@ -205,14 +205,15 @@ const convertHEICToImage = async (file, quality = 0.9) => {
 
 /**
  * 이미지 리사이징 (업로드 시 사용)
+ * 슬롯 크기에 정확히 맞춰 강제로 스케일링 (왜곡 허용, crop 금지)
  * HEIC 파일인 경우 자동으로 JPG로 변환 후 처리
  * @param {File} file - 이미지 파일
- * @param {number} maxWidth - 최대 너비
- * @param {number} maxHeight - 최대 높이
+ * @param {number} targetWidth - 목표 너비 (슬롯 너비)
+ * @param {number} targetHeight - 목표 높이 (슬롯 높이)
  * @param {number} quality - JPEG 품질
  * @returns {Promise<string>} 리사이징된 이미지의 base64 URL
  */
-export const resizeImage = async (file, maxWidth = 1200, maxHeight = 1600, quality = 0.9) => {
+export const resizeImage = async (file, targetWidth = 1200, targetHeight = 1600, quality = 0.9) => {
   // HEIC 파일인 경우 먼저 변환
   let imageFile = file
   if (isHEICFile(file)) {
@@ -232,20 +233,18 @@ export const resizeImage = async (file, maxWidth = 1200, maxHeight = 1600, quali
       const img = new Image()
       
       img.onload = () => {
-        let width = img.width
-        let height = img.height
+        const imageWidth = img.width
+        const imageHeight = img.height
         
-        // 비율 유지하며 리사이징
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height)
-          width = width * ratio
-          height = height * ratio
-        }
+        // 슬롯 크기에 정확히 맞춰 강제로 스케일링 (왜곡 허용)
+        // scaleX = targetWidth / imageWidth
+        // scaleY = targetHeight / imageHeight
+        // 이미지가 잘리지 않도록 슬롯 크기에 정확히 맞춰 그리기
         
-        // Canvas에 그리기
+        // Canvas를 슬롯 크기로 생성
         const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
+        canvas.width = targetWidth
+        canvas.height = targetHeight
         
         const ctx = canvas.getContext('2d')
         if (!ctx) {
@@ -253,7 +252,10 @@ export const resizeImage = async (file, maxWidth = 1200, maxHeight = 1600, quali
           return
         }
         
-        ctx.drawImage(img, 0, 0, width, height)
+        // 이미지를 슬롯 크기에 정확히 맞춰 그리기 (왜곡 허용, crop 금지)
+        // drawImage(image, dx, dy, dWidth, dHeight)
+        // dWidth와 dHeight를 targetWidth, targetHeight로 설정하여 강제 스케일링
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
         
         // base64로 변환
         const base64 = canvas.toDataURL('image/jpeg', quality)

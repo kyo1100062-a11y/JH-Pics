@@ -515,7 +515,7 @@ const EditPage = () => {
         return
       }
 
-      await exportToJPEG(canvasElement, generateFilename, highQuality)
+      await exportToJPEG(canvasElement, generateFilename, highQuality, paperOrientation)
     } catch (error) {
       console.error('JPEG 출력 실패:', error)
       alert('JPEG 출력에 실패했습니다.')

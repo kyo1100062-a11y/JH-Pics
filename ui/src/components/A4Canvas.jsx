@@ -173,6 +173,89 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0, pa
     }
   }, [])
 
+  // 용지 방향 변경 시 이미지를 현재 슬롯 크기에 맞춰 자동 리사이징
+  useEffect(() => {
+    // DOM이 완전히 렌더링될 때까지 대기
+    const timeoutId = setTimeout(async () => {
+      const canvasElement = ref?.current || document.querySelector('[data-a4-canvas="true"]')
+      if (!canvasElement) return
+
+      const page = pages.find(p => p.pageIndex === pageIndex)
+      if (!page || !page.slots || page.slots.length === 0) return
+
+      // 모든 슬롯의 이미지를 현재 슬롯 크기에 맞춰 리사이징
+      const resizePromises = []
+      const slots = canvasElement.querySelectorAll('.export-slot')
+      
+      slots.forEach((slot, slotIndex) => {
+        const slotImage = page.slots.find(s => normalizeSlotIndex(s.slotIndex) === slotIndex)
+        if (!slotImage || !slotImage.originalUrl) return
+
+        const img = slot.querySelector('img')
+        if (!img) return
+
+        const resizePromise = (async () => {
+          try {
+            // 현재 슬롯 크기 계산
+            const slotRect = slot.getBoundingClientRect()
+            const slotComputedStyle = window.getComputedStyle(slot)
+            const slotBorderWidth = parseFloat(slotComputedStyle.borderWidth) || 2
+            const paddingTop = parseFloat(slotComputedStyle.paddingTop) || 0
+            const paddingBottom = parseFloat(slotComputedStyle.paddingBottom) || 0
+            const paddingLeft = parseFloat(slotComputedStyle.paddingLeft) || 0
+            const paddingRight = parseFloat(slotComputedStyle.paddingRight) || 0
+            
+            const actualWidth = slotRect.width - (slotBorderWidth * 2) - paddingLeft - paddingRight
+            const actualHeight = slotRect.height - (slotBorderWidth * 2) - paddingTop - paddingBottom
+            
+            // 고해상도 출력을 위해 2배 적용
+            const targetWidth = Math.max(800, Math.ceil(actualWidth * 2))
+            const targetHeight = Math.max(800, Math.ceil(actualHeight * 2))
+            
+            // 원본 이미지 가져오기
+            const originalUrl = slotImage.originalUrl || slotImage.url
+            if (!originalUrl) return
+
+            let file
+            if (originalUrl.startsWith('data:')) {
+              // base64 이미지인 경우 Blob으로 변환
+              const { base64ToBlob } = await import('../utils/imageUtils')
+              const blob = base64ToBlob(originalUrl)
+              file = new File([blob], 'image.jpg', { type: 'image/jpeg' })
+            } else {
+              // 일반 URL인 경우 fetch로 가져오기
+              const response = await fetch(originalUrl)
+              const blob = await response.blob()
+              file = new File([blob], 'image.jpg', { type: 'image/jpeg' })
+            }
+            
+            // 현재 슬롯 크기에 맞춰 리사이징
+            const resizedUrl = await resizeImage(file, targetWidth, targetHeight, 0.9)
+            
+            // 리사이징된 이미지로 업데이트
+            const normalizedPageIndex = typeof pageIndex === 'number' ? pageIndex : Number(pageIndex)
+            setImage(
+              normalizedPageIndex,
+              slotIndex,
+              resizedUrl,
+              slotImage.description || '',
+              originalUrl // 원본 URL 보존
+            )
+          } catch (error) {
+            console.warn(`슬롯 ${slotIndex} 이미지 리사이징 실패:`, error)
+          }
+        })()
+
+        resizePromises.push(resizePromise)
+      })
+
+      // 모든 이미지 리사이징 완료 대기
+      await Promise.all(resizePromises)
+    }, 100) // DOM 렌더링 대기
+
+    return () => clearTimeout(timeoutId)
+  }, [paperOrientation, pageIndex, pages, ref, setImage, normalizeSlotIndex])
+
   // slotIndex 정규화 유틸 함수
   const normalizeSlotIndex = useCallback((slotIndex) => {
     return typeof slotIndex === 'number' ? slotIndex : Number(slotIndex)
@@ -239,8 +322,66 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0, pa
     }
 
     try {
-      // 이미지 리사이징 및 base64 변환
-      const base64Url = await resizeImage(file, 1200, 1600, 0.9)
+      // 슬롯 크기 계산 (이미지 슬롯의 실제 크기에 정확히 맞춰 강제 스케일링)
+      let slotWidth = 1200
+      let slotHeight = 1600
+      
+      // 슬롯 요소 찾기 (다양한 방법 시도)
+      let slotElement = null
+      try {
+        // 방법 1: data-slot-index 속성으로 찾기
+        slotElement = document.querySelector(`[data-slot-index="${slotIndex}"]`)
+        
+        // 방법 2: export-slot 클래스와 인덱스로 찾기
+        if (!slotElement) {
+          const canvasElement = ref?.current || document.querySelector('[data-a4-canvas="true"]')
+          if (canvasElement) {
+            const allSlots = canvasElement.querySelectorAll('.export-slot')
+            if (allSlots[slotIndex]) {
+              slotElement = allSlots[slotIndex]
+            }
+          }
+        }
+        
+        // 방법 3: 그리드 컨테이너의 자식 요소로 찾기
+        if (!slotElement) {
+          const canvasElement = ref?.current || document.querySelector('[data-a4-canvas="true"]')
+          if (canvasElement) {
+            const gridContainer = canvasElement.querySelector('.grid')
+            if (gridContainer) {
+              const gridSlots = Array.from(gridContainer.children)
+              if (gridSlots[slotIndex]) {
+                slotElement = gridSlots[slotIndex]
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('슬롯 요소를 찾는 중 오류:', error)
+      }
+      
+      if (slotElement) {
+        const slotRect = slotElement.getBoundingClientRect()
+        // 슬롯 크기에서 border와 padding 제외한 실제 이미지 영역 계산
+        const computedStyle = window.getComputedStyle(slotElement)
+        const borderWidth = parseFloat(computedStyle.borderWidth) || 2
+        const paddingTop = parseFloat(computedStyle.paddingTop) || 0
+        const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0
+        const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0
+        const paddingRight = parseFloat(computedStyle.paddingRight) || 0
+        
+        const actualWidth = slotRect.width - (borderWidth * 2) - paddingLeft - paddingRight
+        const actualHeight = slotRect.height - (borderWidth * 2) - paddingTop - paddingBottom
+        
+        // 고해상도 출력을 위해 2배 적용 (슬롯 비율 유지)
+        // 슬롯 크기에 정확히 맞춰 강제 스케일링 (왜곡 허용)
+        slotWidth = Math.max(800, Math.ceil(actualWidth * 2))
+        slotHeight = Math.max(800, Math.ceil(actualHeight * 2))
+      }
+      
+      // 이미지 리사이징 및 base64 변환 (슬롯 크기에 정확히 맞춰 강제 스케일링)
+      // resizeImage 함수가 슬롯 크기에 맞춰 강제로 스케일링함 (왜곡 허용, crop 금지)
+      const base64Url = await resizeImage(file, slotWidth, slotHeight, 0.9)
       
       // Zustand store에 저장 (즉시 미리보기용)
       // 이미지 업로드 시 원본 이미지 URL도 함께 저장
@@ -303,7 +444,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0, pa
       const errorMessage = error.message || '이미지 업로드에 실패했습니다.'
       alert(errorMessage)
     }
-  }, [pageIndex, setImage])
+  }, [pageIndex, setImage, ref])
 
   // 파일 선택 핸들러
   const handleFileSelect = useCallback((e, slotIndex) => {
@@ -503,6 +644,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0, pa
               return (
                 <div
                   key={layoutType === 'custom' ? slot.id : idx}
+                  data-slot-index={slotIndex}
                   className={`border-2 border-dashed rounded-lg relative group overflow-hidden flex flex-col export-slot ${
                     hasImage 
                       ? 'border-gray-300 bg-white' 
@@ -511,6 +653,7 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0, pa
                   style={{ 
                     minHeight: 0, 
                     minWidth: 0,
+                    boxSizing: 'border-box',
                     ...(layoutType === 'custom' ? getSlotGridStyle(slot) : {})
                   }}
                   onDragOver={handleDragOver}
@@ -526,11 +669,13 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0, pa
                         <img
                           src={image.url}
                           alt={`슬롯 ${slotIndex + 1}`}
-                          className="w-full h-full object-contain"
+                          data-original-url={image.originalUrl || image.url}
+                          className="w-full h-full"
                           style={{ 
                             width: '100%',
                             height: '100%',
-                            display: 'block'
+                            display: 'block',
+                            objectFit: 'fill' // 슬롯 크기에 정확히 맞춰 강제 스케일링 (왜곡 허용)
                           }}
                         />
                         
