@@ -107,7 +107,8 @@ export async function savePictureSet(pictureSetId, data) {
       title: data.title.trim(),
       farmer_name: data.farmer_name || '',
       manager_name: data.manager_name || '',
-      pages: data.pages // JSONB로 저장
+      pages: data.pages, // JSONB로 저장
+      paper_orientation: data.paper_orientation || 'portrait' // 용지 방향 저장
     }
 
     // ============================================

@@ -1,4 +1,4 @@
-import { Fragment, useState, useCallback, useEffect } from 'react'
+import { Fragment, useState, useCallback, useEffect, useRef } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import Cropper from 'react-easy-crop'
 import useStore from '../store/useStore'
@@ -18,6 +18,34 @@ const ImageCropModal = () => {
   const [rotation, setRotation] = useState(0)
   const [cropAreaPixels, setCropAreaPixels] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
+  const cropperContainerRef = useRef(null)
+
+  // PC/모바일 통합 이벤트 처리 최적화
+  // react-easy-crop이 내부적으로 이벤트를 처리하므로, CSS와 스타일 최적화에 집중
+  useEffect(() => {
+    if (!isOpen || !cropperContainerRef.current) return
+
+    const container = cropperContainerRef.current
+
+    // PC에서의 드래그 시각적 피드백 개선
+    // react-easy-crop 내부 이벤트와 충돌하지 않도록 CSS만 조정
+    const handleMouseEnter = () => {
+      container.style.cursor = 'grab'
+    }
+
+    const handleMouseLeave = () => {
+      container.style.cursor = 'default'
+    }
+
+    // 마우스 이벤트로 시각적 피드백만 제공 (실제 드래그는 react-easy-crop이 처리)
+    container.addEventListener('mouseenter', handleMouseEnter)
+    container.addEventListener('mouseleave', handleMouseLeave)
+
+    return () => {
+      container.removeEventListener('mouseenter', handleMouseEnter)
+      container.removeEventListener('mouseleave', handleMouseLeave)
+    }
+  }, [isOpen])
 
   // 모달이 열릴 때 초기화
   useEffect(() => {
@@ -225,7 +253,19 @@ const ImageCropModal = () => {
                 </div>
 
                 {/* react-easy-crop 영역 */}
-                <div className="relative bg-deep-blue/50 mb-6" style={{ height: '400px' }}>
+                <div 
+                  ref={cropperContainerRef}
+                  className="relative bg-deep-blue/50 mb-6" 
+                  style={{ 
+                    height: '400px',
+                    touchAction: 'none', // PC/모바일 통합 터치/마우스 이벤트 처리
+                    userSelect: 'none', // 텍스트 선택 방지
+                    WebkitUserSelect: 'none',
+                    MozUserSelect: 'none',
+                    msUserSelect: 'none',
+                    cursor: 'grab', // PC에서 드래그 가능 표시
+                  }}
+                >
                   {imageUrl ? (
                     <Cropper
                       image={imageUrl}
@@ -247,9 +287,24 @@ const ImageCropModal = () => {
                           width: '100%',
                           height: '100%',
                           position: 'relative',
+                          touchAction: 'none', // PC/모바일 통합 터치/마우스 이벤트 처리 - passive 이벤트 충돌 방지
+                          userSelect: 'none', // 텍스트 선택 방지
+                          WebkitUserSelect: 'none',
+                          MozUserSelect: 'none',
+                          msUserSelect: 'none',
+                          cursor: 'grab', // PC에서 드래그 가능 표시
                         },
                         cropAreaStyle: {
                           border: '2px solid #4C6FFF',
+                          cursor: 'move', // 크롭 영역 이동 가능 표시
+                          touchAction: 'none', // PC/모바일 통합 처리
+                        },
+                        mediaStyle: {
+                          touchAction: 'none', // 이미지 드래그/줌 이벤트 최적화
+                          userSelect: 'none',
+                          WebkitUserSelect: 'none',
+                          MozUserSelect: 'none',
+                          msUserSelect: 'none',
                         },
                       }}
                     />

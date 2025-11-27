@@ -113,6 +113,7 @@ export async function loadPictureSet(pictureSetId) {
         title: data.title || '현장 확인 사진',
         farmer_name: data.farmer_name || '',
         manager_name: data.manager_name || '',
+        paper_orientation: data.paper_orientation || 'portrait', // 용지 방향 추가
         pages: normalizedPages,
         created_at: data.created_at,
         updated_at: data.updated_at

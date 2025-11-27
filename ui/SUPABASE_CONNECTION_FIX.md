@@ -215,3 +215,4 @@ AND tablename IN ('projects', 'picture_sets');
 3. **재테스트**: `/diagnostics` 페이지에서 다시 테스트
 4. **결과 확인**: 모든 항목이 ✅로 표시되는지 확인
 
+

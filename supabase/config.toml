@@ -1,0 +1,15 @@
+# === Supabase 프로젝트 기본 설정 ===
+# Supabase 대시보드에서 본 Reference ID
+project_id = "yqdkdbmzixhfadzztmud"
+
+# === Edge Function 설정 (선택 사항) ===
+# 각 함수 이름별로 옵션을 줄 수 있는데, 지금은 JWT 검증을 끈 상태로 맞춰줄게.
+
+[functions.projects]
+verify_jwt = false
+
+[functions.picture_sets]
+verify_jwt = false
+
+[functions.upload]
+verify_jwt = false

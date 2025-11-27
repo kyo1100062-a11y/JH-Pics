@@ -82,7 +82,7 @@ const Header = () => {
                 </Link>
               )}
               
-              {/* 사용자 정보 및 로그아웃 */}
+              {/* 사용자 정보 및 메뉴 */}
               <div className="ml-2 flex items-center gap-2">
                 <span className="text-xs text-soft-blue/60 px-2">
                   {getUserDisplayName()}
@@ -92,6 +92,19 @@ const Header = () => {
                     </span>
                   )}
                 </span>
+                
+                {/* 관리자 메뉴 링크 */}
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    className="px-3 py-1.5 rounded-button text-xs font-medium transition-all text-soft-blue hover:text-accent-mint hover:bg-soft-blue/5"
+                    title="관리자 페이지"
+                  >
+                    관리자
+                  </Link>
+                )}
+                
+                {/* 로그아웃 버튼 */}
                 <button 
                   onClick={handleLogout}
                   className="p-2 rounded-button text-soft-blue hover:text-red-400 hover:bg-red-500/10 transition-all"
@@ -116,6 +129,12 @@ const Header = () => {
           ) : (
             <>
               {/* 로그인되지 않은 사용자 메뉴 */}
+              <Link 
+                to="/signup" 
+                className="px-4 py-2 rounded-button text-sm font-medium transition-all text-soft-blue hover:text-accent-mint hover:bg-soft-blue/5"
+              >
+                회원가입
+              </Link>
               <Link 
                 to="/login" 
                 className="px-4 py-2 rounded-button text-sm font-medium transition-all bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 hover:shadow-glow"

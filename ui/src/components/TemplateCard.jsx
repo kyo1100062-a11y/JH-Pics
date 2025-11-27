@@ -20,12 +20,9 @@ const TemplateCard = ({ name, layout, icon }) => {
         
         {/* Content */}
         <div className="relative z-10 text-center">
-          <h3 className="text-xl font-bold text-white mb-2 group-hover:text-primary transition-colors duration-300">
+          <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-primary transition-colors duration-300">
             {name}
           </h3>
-          <p className="text-soft-blue text-sm group-hover:text-accent-mint transition-colors duration-300">
-            {layout}
-          </p>
         </div>
         
         {/* Bottom Accent Line */}

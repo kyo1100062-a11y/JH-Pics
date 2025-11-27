@@ -2,30 +2,65 @@
 // Login Page - Supabase Auth 로그인
 // ============================================
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { signIn } from '../lib/auth'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { signIn, isAdminEmail, updateUserRole, getUserProfile } from '../lib/auth'
 import useAuthStore from '../store/authStore'
+import { signOut } from '../lib/auth'
 
 const Login = () => {
   const navigate = useNavigate()
-  const { user, loadUser } = useAuthStore()
+  const location = useLocation()
+  const { user, loadUser, isApproved, userRole } = useAuthStore()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [infoMessage, setInfoMessage] = useState('')
+
+  // location.state에서 메시지 가져오기 (회원가입 후 리다이렉트)
+  useEffect(() => {
+    if (location.state?.message) {
+      setInfoMessage(location.state.message)
+      // URL에서 state 제거
+      window.history.replaceState({}, document.title)
+    }
+  }, [location.state])
 
   // 이미 로그인된 경우 리다이렉트
   useEffect(() => {
     if (user) {
-      navigate('/')
+      // 승인되지 않은 사용자는 로그아웃 처리
+      if (!isApproved) {
+        handleUnauthorizedUser()
+      } else {
+        navigate('/')
+      }
     }
-  }, [user, navigate])
+  }, [user, isApproved, navigate])
+
+  // 승인되지 않은 사용자 처리
+  const handleUnauthorizedUser = async () => {
+    const roleMessages = {
+      'pending': '관리자 승인 대기 중입니다. 승인 후 로그인할 수 있습니다.',
+      'approved': '승인된 사용자입니다.',
+      'admin': '관리자입니다.'
+    }
+
+    const message = roleMessages[userRole] || '승인되지 않은 사용자입니다.'
+    
+    alert(message)
+    
+    // 자동 로그아웃
+    await signOut()
+    await loadUser()
+  }
 
   // 로그인 핸들러
   const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
+    setInfoMessage('')
     setLoading(true)
 
     // 유효성 검사
@@ -45,10 +80,41 @@ const Login = () => {
       const result = await signIn(email, password)
 
       if (result.success) {
+        // 관리자 이메일인 경우 프로필 확인 및 업데이트
+        const trimmedEmail = email.trim().toLowerCase()
+        if (isAdminEmail(trimmedEmail) && result.user) {
+          const profileResult = await getUserProfile(result.user.id)
+          if (profileResult.success && profileResult.profile) {
+            // 관리자 이메일인데 role이 admin이 아닌 경우 업데이트
+            if (profileResult.profile.role !== 'admin') {
+              await updateUserRole(result.user.id, 'admin')
+            }
+          }
+        }
+        
         // 사용자 정보 다시 로드
         await loadUser()
-        // 홈으로 이동
-        navigate('/')
+        
+        // 잠시 대기하여 role 정보가 업데이트되도록 함
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        // 승인 상태 다시 확인
+        const currentState = useAuthStore.getState()
+        const approved = currentState.isApproved
+        const role = currentState.userRole
+        
+        // 관리자 이메일인 경우 예외 처리
+        if (isAdminEmail(trimmedEmail)) {
+          // 관리자 이메일이면 무조건 접근 허용
+          navigate('/')
+        } else if (!approved) {
+          // 승인되지 않은 사용자 처리
+          await handleUnauthorizedUser()
+          setError('관리자 승인 대기 중입니다. 승인 후 로그인할 수 있습니다.')
+        } else {
+          // 홈으로 이동
+          navigate('/')
+        }
       } else {
         setError(result.error || '로그인에 실패했습니다.')
       }
@@ -105,6 +171,13 @@ const Login = () => {
               />
             </div>
 
+            {/* 정보 메시지 */}
+            {infoMessage && (
+              <div className="p-3 bg-accent-mint/10 border border-accent-mint/30 text-accent-mint rounded-button text-sm">
+                {infoMessage}
+              </div>
+            )}
+
             {/* 에러 메시지 */}
             {error && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-button text-sm">
@@ -134,6 +207,15 @@ const Login = () => {
 
           {/* 안내 메시지 */}
           <div className="mt-6 pt-6 border-t border-soft-blue/20">
+            <p className="text-xs text-soft-blue/60 text-center mb-2">
+              계정이 없으신가요?{' '}
+              <Link 
+                to="/signup" 
+                className="text-accent-mint hover:text-accent-mint/80 font-semibold underline"
+              >
+                회원가입
+              </Link>
+            </p>
             <p className="text-xs text-soft-blue/60 text-center">
               관리자 계정이 필요하신가요? 시스템 관리자에게 문의하세요.
             </p>

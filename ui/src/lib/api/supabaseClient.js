@@ -48,6 +48,14 @@ export async function getAuthToken() {
  */
 export async function callEdgeFunction(endpoint, options = {}) {
   try {
+    // 환경변수 확인
+    if (!supabaseUrl) {
+      return {
+        success: false,
+        error: 'Supabase URL이 설정되지 않았습니다. 환경변수를 확인해주세요.'
+      }
+    }
+
     // 인증 토큰 가져오기
     const token = await getAuthToken()
     
@@ -62,20 +70,107 @@ export async function callEdgeFunction(endpoint, options = {}) {
     const apiUrl = `${supabaseUrl}/functions/v1${endpoint}`
 
     // fetch 요청
-    const response = await fetch(apiUrl, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...options.headers
+    let response
+    try {
+      console.log('📡 API 호출:', {
+        endpoint,
+        method: options.method || 'GET',
+        url: apiUrl
+      })
+      
+      response = await fetch(apiUrl, {
+        ...options,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...options.headers
+        }
+      })
+      
+      console.log('📥 API 응답:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      })
+    } catch (fetchError) {
+      // 네트워크 에러 처리
+      console.error('❌ 네트워크 에러:', {
+        message: fetchError.message,
+        name: fetchError.name,
+        endpoint,
+        url: apiUrl
+      })
+      
+      // "Failed to fetch" 에러인 경우
+      if (fetchError.message === 'Failed to fetch' || fetchError.name === 'TypeError') {
+        return {
+          success: false,
+          error: `서버에 연결할 수 없습니다. Edge Function이 배포되었는지 확인해주세요.\n\n엔드포인트: ${endpoint}\nURL: ${apiUrl}\n\n해결 방법:\n1. Supabase Dashboard에서 Edge Functions 메뉴 확인\n2. 'projects' 함수가 배포되어 있는지 확인\n3. Edge Functions 환경 변수 설정 확인`
+        }
       }
-    })
+      
+      return {
+        success: false,
+        error: `네트워크 오류: ${fetchError.message}`
+      }
+    }
 
-    // 응답 파싱
-    const result = await response.json()
+    // 응답이 없는 경우
+    if (!response) {
+      return {
+        success: false,
+        error: '서버로부터 응답을 받을 수 없습니다.'
+      }
+    }
+
+    // 응답 본문이 있는지 확인
+    const contentType = response.headers.get('content-type')
+    let result
+
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        result = await response.json()
+      } catch (jsonError) {
+        console.error('JSON 파싱 에러:', jsonError)
+        const text = await response.text()
+        return {
+          success: false,
+          error: `응답 파싱 실패: ${text || response.statusText}`
+        }
+      }
+    } else {
+      // JSON이 아닌 경우 텍스트로 읽기
+      const text = await response.text()
+      return {
+        success: false,
+        error: `예상치 못한 응답 형식: ${text || response.statusText}`
+      }
+    }
 
     // HTTP 에러 처리
     if (!response.ok) {
+      console.error('❌ HTTP 에러 응답:', {
+        status: response.status,
+        statusText: response.statusText,
+        result
+      })
+      
+      // 401 Unauthorized인 경우
+      if (response.status === 401) {
+        return {
+          success: false,
+          error: '로그인이 필요합니다. 다시 로그인해주세요.'
+        }
+      }
+      
+      // 500 Internal Server Error인 경우
+      if (response.status === 500) {
+        return {
+          success: false,
+          error: result.error || '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+        }
+      }
+      
       return {
         success: false,
         error: result.error || `HTTP ${response.status}: ${response.statusText}`
@@ -83,10 +178,20 @@ export async function callEdgeFunction(endpoint, options = {}) {
     }
 
     // 성공 응답
+    console.log('✅ API 호출 성공:', {
+      endpoint,
+      dataLength: result.data ? (Array.isArray(result.data) ? result.data.length : 1) : 0
+    })
     return result
 
   } catch (error) {
     console.error('API 호출 오류:', error)
+    
+    // 이미 처리된 에러는 그대로 반환
+    if (error.success === false) {
+      return error
+    }
+    
     return {
       success: false,
       error: error.message || 'API 호출 중 오류가 발생했습니다.'

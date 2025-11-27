@@ -39,6 +39,7 @@ const EditPage = () => {
     metadata,
     projects,
     currentPictureSetId,
+    paperOrientation,
     addPage,
     deletePage,
     setCurrentPage,
@@ -48,7 +49,8 @@ const EditPage = () => {
     setProjects,
     setPages,
     setMetadata,
-    setImage
+    setImage,
+    setPaperOrientation
   } = useStore()
 
   // ============================================
@@ -78,23 +80,8 @@ const EditPage = () => {
   }
 
   // ============================================
-  // 초기화: URL 템플릿 정보 처리
+  // 초기화: 기존 Picture Set 로드 함수 (먼저 정의)
   // ============================================
-  useEffect(() => {
-    if (urlTemplate && urlTemplate !== currentTemplate) {
-      initializeTemplate(urlTemplate)
-    }
-  }, [urlTemplate, currentTemplate, initializeTemplate])
-
-  // ============================================
-  // 초기화: 기존 Picture Set 로드 (id가 있으면)
-  // ============================================
-  useEffect(() => {
-    if (id && id !== 'new') {
-      handleLoadPictureSet(id)
-    }
-  }, [id, handleLoadPictureSet])
-
   const handleLoadPictureSet = useCallback(async (pictureSetId) => {
     setLoading(true)
     try {
@@ -126,13 +113,16 @@ const EditPage = () => {
       setCurrentPictureSetId(pictureSet.id)
 
       // 3. 메타데이터 설정
-      setMetadata({
-        title: pictureSet.title || '현장 확인 사진',
-        projectId: pictureSet.project_id || '',
-        projectName: '', // 프로젝트 이름은 projects에서 찾아서 설정
-        farmerName: pictureSet.farmer_name || '',
-        managerName: pictureSet.manager_name || ''
-      })
+          const loadedOrientation = pictureSet.paper_orientation || metadata.paperOrientation || 'portrait'
+          setPaperOrientation(loadedOrientation)
+          setMetadata({
+            title: pictureSet.title || '현장 확인 사진',
+            projectId: pictureSet.project_id || '',
+            projectName: '', // 프로젝트 이름은 projects에서 찾아서 설정
+            farmerName: pictureSet.farmer_name || '',
+            managerName: pictureSet.manager_name || '',
+            paperOrientation: loadedOrientation
+          })
 
       // 프로젝트 이름 설정 (projects가 로드된 후에만)
       if (pictureSet.project_id) {
@@ -163,36 +153,14 @@ const EditPage = () => {
       }
 
       // 4. pages 데이터 설정
+      // setPages 함수가 깊은 복사를 수행하므로 한 번만 호출하면 됨
       if (pictureSet.pages && Array.isArray(pictureSet.pages) && pictureSet.pages.length > 0) {
-        // pages가 있으면 설정
+        // pages가 있으면 설정 (깊은 복사 수행)
         setPages(pictureSet.pages)
         
-        // 5. 각 슬롯에 이미지 URL과 description 자동 로드
-        pictureSet.pages.forEach((page) => {
-          if (page.slots && Array.isArray(page.slots)) {
-            page.slots.forEach((slot) => {
-              // 이미지 URL이 있으면 슬롯에 설정
-              if (slot.url) {
-                setImage(
-                  page.pageIndex,
-                  slot.slotIndex,
-                  slot.url,
-                  slot.description || '',
-                  slot.originalUrl || slot.url
-                )
-              } else if (slot.description) {
-                // 이미지는 없지만 description이 있는 경우
-                setImage(
-                  page.pageIndex,
-                  slot.slotIndex,
-                  '',
-                  slot.description,
-                  null
-                )
-              }
-            })
-          }
-        })
+        // setPages가 이미 깊은 복사를 수행하므로, 
+        // 각 슬롯을 다시 setImage로 설정할 필요 없음
+        // setPages 내부에서 모든 슬롯 데이터가 올바르게 복사됨
       } else {
         // pages가 없거나 빈 배열이면 빈 템플릿 유지
         console.log('Picture Set에 pages 데이터가 없습니다. 빈 템플릿을 유지합니다.')
@@ -223,7 +191,34 @@ const EditPage = () => {
     } finally {
       setLoading(false)
     }
-  }, [navigate, setCurrentPictureSetId, setMetadata, setPages, updateMetadata])
+  }, [navigate, setCurrentPictureSetId, setMetadata, setPages, updateMetadata, setPaperOrientation, setImage])
+
+  // ============================================
+  // 초기화: URL 템플릿 정보 처리 및 새 문서 초기화
+  // ============================================
+  useEffect(() => {
+    // id가 'new'이고 urlTemplate이 있을 때 초기화
+    if (id === 'new' && urlTemplate) {
+      if (urlTemplate !== currentTemplate || !pages || pages.length === 0) {
+        initializeTemplate(urlTemplate)
+      }
+    }
+    // id가 'new'이고 urlTemplate이 없을 때는 기본 템플릿으로 초기화
+    else if (id === 'new' && !urlTemplate) {
+      if (!pages || pages.length === 0 || !currentTemplate) {
+        initializeTemplate('4cut') // 기본 템플릿
+      }
+    }
+  }, [id, urlTemplate, currentTemplate, pages, initializeTemplate])
+
+  // ============================================
+  // 초기화: 기존 Picture Set 로드 (id가 있으면)
+  // ============================================
+  useEffect(() => {
+    if (id && id !== 'new') {
+      handleLoadPictureSet(id)
+    }
+  }, [id, handleLoadPictureSet])
 
   // ============================================
   // 저장 기능
@@ -249,7 +244,8 @@ const EditPage = () => {
         title: metadata.title.trim(),
         farmer_name: metadata.farmerName || '',
         manager_name: metadata.managerName || '',
-        pages: pages
+        pages: pages,
+        paper_orientation: paperOrientation || 'portrait'
       }
 
       let pictureSetId = currentPictureSetId
@@ -425,16 +421,89 @@ const EditPage = () => {
 
   const handleExportPDF = async () => {
     try {
-      const canvasElements = pages.map((_, idx) => canvasRefs.current[idx]).filter(Boolean)
-      if (canvasElements.length === 0) {
-        alert('Canvas를 찾을 수 없습니다.')
+      // pages가 없거나 빈 배열이면 경고
+      if (!pages || !Array.isArray(pages) || pages.length === 0) {
+        alert('출력할 페이지가 없습니다.')
         return
       }
 
-      await exportAllPagesToPDF(canvasElements, generateFilename, highQuality, currentTemplate)
+      // 모든 페이지의 Canvas 요소를 수집
+      // 각 페이지를 순차적으로 활성화하여 렌더링한 후 캡처
+      const canvasElements = []
+      const originalPageIndex = currentPageIndex
+      
+      // pages 배열을 pageIndex 순서대로 정렬
+      const sortedPages = [...pages].sort((a, b) => a.pageIndex - b.pageIndex)
+      
+      console.log('[PDF Export] Canvas 요소 수집 시작:', {
+        totalPages: sortedPages.length,
+        sortedPages: sortedPages.map(p => p.pageIndex)
+      })
+      
+      try {
+        // 각 페이지를 순차적으로 활성화하고 캡처
+        for (const page of sortedPages) {
+          // 페이지를 활성화하여 렌더링
+          setCurrentPage(page.pageIndex)
+          
+          // React가 리렌더링하고 ref를 할당할 시간 제공 (더 긴 대기 시간)
+          await new Promise(resolve => setTimeout(resolve, 200))
+          
+          // 해당 페이지의 Canvas 요소 찾기
+          const canvasElement = canvasRefs.current[page.pageIndex]
+          
+          if (canvasElement) {
+            canvasElements.push(canvasElement)
+            console.log(`[PDF Export] 페이지 ${page.pageIndex + 1} Canvas 요소 수집 완료`)
+          } else {
+            console.error(`[PDF Export] 페이지 ${page.pageIndex + 1}의 Canvas 요소를 찾을 수 없습니다.`)
+            // DOM에서 직접 찾기 시도
+            const domCanvas = document.querySelector('[data-a4-canvas="true"]')
+            if (domCanvas) {
+              canvasElements.push(domCanvas)
+              console.log(`[PDF Export] DOM에서 페이지 ${page.pageIndex + 1} Canvas 요소를 찾았습니다.`)
+            }
+          }
+        }
+        
+        // 원래 페이지로 복원
+        setCurrentPage(originalPageIndex)
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        if (canvasElements.length === 0) {
+          console.error('[PDF Export] 수집된 Canvas 요소가 없습니다.')
+          alert('Canvas를 찾을 수 없습니다. 페이지를 새로고침한 후 다시 시도해주세요.')
+          return
+        }
+        
+        if (canvasElements.length !== sortedPages.length) {
+          console.warn(`[PDF Export] 일부 페이지의 Canvas를 찾지 못했습니다. (수집: ${canvasElements.length}/${sortedPages.length})`)
+        }
+        
+        console.log(`[PDF Export] ${canvasElements.length}개 페이지의 Canvas 요소 수집 완료`)
+        const templateForExport = currentTemplate || '4cut'
+        await exportAllPagesToPDF(canvasElements, generateFilename, highQuality, templateForExport, paperOrientation)
+      } catch (error) {
+        // 에러 발생 시 원래 페이지로 복원
+        setCurrentPage(originalPageIndex)
+        throw error
+      }
     } catch (error) {
       console.error('PDF 출력 실패:', error)
-      alert('PDF 출력에 실패했습니다.')
+      console.error('Error stack:', error.stack)
+      console.error('Error details:', {
+        message: error.message,
+        pages: pages?.length,
+        canvasRefs: Object.keys(canvasRefs.current).length,
+        currentPageIndex
+      })
+      
+      // 더 구체적인 에러 메시지 표시
+      let errorMsg = 'PDF 출력에 실패했습니다.'
+      if (error.message) {
+        errorMsg = `PDF 출력 실패: ${error.message}`
+      }
+      alert(errorMsg)
     }
   }
 
@@ -517,6 +586,14 @@ const EditPage = () => {
     )
   }
 
+  // pages가 없거나 빈 배열일 때 기본값 설정 (안전장치)
+  const safePages = pages && Array.isArray(pages) && pages.length > 0 
+    ? pages 
+    : [{ pageIndex: 0, slots: [] }]
+
+  // currentTemplate이 없을 때 기본값 설정
+  const safeTemplate = currentTemplate || '4cut'
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* 상단 입력 영역 */}
@@ -529,7 +606,7 @@ const EditPage = () => {
             </label>
             <input
               type="text"
-              value={metadata.title}
+              value={metadata?.title || ''}
               onChange={(e) => handleTitleChange(e.target.value)}
               className="w-full px-4 py-2.5 bg-deep-blue border-2 border-soft-blue/50 rounded-button focus:border-accent-mint focus:shadow-glow focus:outline-none text-white placeholder-soft-blue/50 transition-all"
               placeholder="현장 확인 사진"
@@ -542,7 +619,7 @@ const EditPage = () => {
               사업명
             </label>
             <select
-              value={metadata.projectId || ''}
+              value={metadata?.projectId || ''}
               onChange={(e) => handleProjectChange(e.target.value)}
               className="w-full px-4 py-2.5 bg-deep-blue border-2 border-soft-blue/50 rounded-button focus:border-accent-mint focus:shadow-glow focus:outline-none text-white transition-all"
             >
@@ -562,7 +639,7 @@ const EditPage = () => {
             </label>
             <input
               type="text"
-              value={metadata.farmerName}
+              value={metadata?.farmerName || ''}
               onChange={(e) => handleFarmerNameChange(e.target.value)}
               className="w-full px-4 py-2.5 bg-deep-blue border-2 border-soft-blue/50 rounded-button focus:border-accent-mint focus:shadow-glow focus:outline-none text-white placeholder-soft-blue/50 transition-all"
               placeholder="보조사업자 입력"
@@ -576,7 +653,7 @@ const EditPage = () => {
             </label>
             <input
               type="text"
-              value={metadata.managerName}
+              value={metadata?.managerName || ''}
               onChange={(e) => handleManagerNameChange(e.target.value)}
               className="w-full px-4 py-2.5 bg-deep-blue border-2 border-soft-blue/50 rounded-button focus:border-accent-mint focus:shadow-glow focus:outline-none text-white placeholder-soft-blue/50 transition-all"
               placeholder="담당자 입력"
@@ -590,7 +667,7 @@ const EditPage = () => {
         <div className="flex items-center gap-2 overflow-x-auto">
           {/* 페이지 탭들 */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {pages.map((page) => (
+            {safePages.map((page) => (
               <div
                 key={page.pageIndex}
                 className={`group relative flex items-center gap-2 px-4 py-2.5 rounded-button text-sm font-semibold transition-all cursor-pointer min-w-fit ${
@@ -602,7 +679,7 @@ const EditPage = () => {
               >
                 <span>페이지 {page.pageIndex + 1}</span>
                 {/* 삭제 버튼 (2페이지 이상일 때만 표시) */}
-                {pages.length > 1 && (
+                {safePages.length > 1 && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -641,12 +718,18 @@ const EditPage = () => {
       <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
         {/* 왼쪽: A4 Canvas 영역 */}
         <div className="flex-1">
+          {/* 현재 활성 페이지만 렌더링 */}
           <A4Canvas 
             ref={(el) => {
-              canvasRefs.current[currentPageIndex] = el
+              if (el) {
+                canvasRefs.current[currentPageIndex] = el
+              } else {
+                delete canvasRefs.current[currentPageIndex]
+              }
             }}
-            layoutType={currentTemplate} 
-            pageIndex={currentPageIndex} 
+            layoutType={safeTemplate} 
+            pageIndex={currentPageIndex}
+            paperOrientation={paperOrientation}
           />
         </div>
 
@@ -680,6 +763,39 @@ const EditPage = () => {
               {currentPictureSetId ? '저장된 문서' : '새 문서'}
               {currentPictureSetId && ' (자동 저장 활성화)'}
             </p>
+          </div>
+
+          {/* 용지설정 영역 */}
+          <div className="bg-deep-blue border-2 border-soft-blue/50 rounded-button-lg p-4">
+            <h3 className="text-sm font-semibold text-soft-blue mb-3">용지설정</h3>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-soft-blue cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="paperOrientation"
+                  checked={paperOrientation === 'portrait'}
+                  onChange={() => {
+                    setPaperOrientation('portrait')
+                    updateMetadata({ paperOrientation: 'portrait' })
+                  }}
+                  className="w-4 h-4 border-soft-blue/50 bg-deep-blue text-primary focus:ring-primary focus:ring-offset-0" 
+                />
+                <span>세로형</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-soft-blue cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="paperOrientation"
+                  checked={paperOrientation === 'landscape'}
+                  onChange={() => {
+                    setPaperOrientation('landscape')
+                    updateMetadata({ paperOrientation: 'landscape' })
+                  }}
+                  className="w-4 h-4 border-soft-blue/50 bg-deep-blue text-primary focus:ring-primary focus:ring-offset-0" 
+                />
+                <span>가로형</span>
+              </label>
+            </div>
           </div>
 
           {/* 출력 버튼들 */}

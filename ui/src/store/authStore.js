@@ -2,21 +2,44 @@
 // 인증 상태 관리 (Zustand)
 // ============================================
 import { create } from 'zustand'
-import { getCurrentUser, getUserRole, isAdmin as checkIsAdmin } from '../lib/auth'
+import { getCurrentUser, getUserRole, isAdmin as checkIsAdmin, isApproved } from '../lib/auth'
 
 const useAuthStore = create((set, get) => ({
   // 인증 상태
   user: null,
   session: null,
+  profile: null, // profiles 테이블의 프로필 정보
   loading: true,
   initialized: false,
 
   // 사용자 정보 설정
-  setUser: (user) => set({ 
-    user,
-    isAdmin: user ? checkIsAdmin(user) : false,
-    userRole: user ? getUserRole(user) : null
-  }),
+  setUser: async (user) => {
+    if (!user) {
+      set({ 
+        user: null,
+        profile: null,
+        isAdmin: false,
+        userRole: null,
+        isApproved: false
+      })
+      return
+    }
+
+    // 프로필 정보 가져오기
+    const role = await getUserRole(user)
+    const admin = await checkIsAdmin(user)
+    const approved = await isApproved(user)
+
+    set({ 
+      user,
+      isAdmin: admin,
+      userRole: role,
+      isApproved: approved
+    })
+  },
+
+  // 프로필 정보 설정
+  setProfile: (profile) => set({ profile }),
 
   // 세션 설정
   setSession: (session) => set({ session }),
@@ -33,10 +56,16 @@ const useAuthStore = create((set, get) => ({
     try {
       const result = await getCurrentUser()
       if (result.success && result.user) {
+        // 프로필 정보 가져오기
+        const role = await getUserRole(result.user)
+        const admin = await checkIsAdmin(result.user)
+        const approved = await isApproved(result.user)
+
         set({ 
           user: result.user,
-          isAdmin: checkIsAdmin(result.user),
-          userRole: getUserRole(result.user),
+          isAdmin: admin,
+          userRole: role,
+          isApproved: approved,
           loading: false,
           initialized: true
         })
@@ -44,8 +73,10 @@ const useAuthStore = create((set, get) => ({
         set({ 
           user: null,
           session: null,
+          profile: null,
           isAdmin: false,
           userRole: null,
+          isApproved: false,
           loading: false,
           initialized: true
         })
@@ -55,8 +86,10 @@ const useAuthStore = create((set, get) => ({
       set({ 
         user: null,
         session: null,
+        profile: null,
         isAdmin: false,
         userRole: null,
+        isApproved: false,
         loading: false,
         initialized: true
       })
@@ -71,8 +104,10 @@ const useAuthStore = create((set, get) => ({
       set({ 
         user: null,
         session: null,
+        profile: null,
         isAdmin: false,
-        userRole: null
+        userRole: null,
+        isApproved: false
       })
     }
     return result
@@ -81,6 +116,7 @@ const useAuthStore = create((set, get) => ({
   // 편의 속성
   isAdmin: false,
   userRole: null,
+  isApproved: false,
   isAuthenticated: () => get().user !== null,
 }))
 

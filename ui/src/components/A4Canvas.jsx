@@ -3,27 +3,45 @@ import useStore from '../store/useStore'
 import { resizeImage } from '../hooks/useImageEditor'
 import ImageCropModal from './ImageCropModal'
 
-const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, ref) => {
+const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0, paperOrientation = 'portrait' }, ref) => {
   // A4 비율: 210mm × 297mm (약 1:1.414)
+  // 용지 방향에 따라 레이아웃 결정
+  const isPortrait = paperOrientation === 'portrait'
+  
   // 레이아웃 타입에 따라 행/열 결정
   let rows = 2
   let cols = 2
   let actualSlotCount = slotCount || 4
-  let isLandscape = false
+  let isLandscape = !isPortrait // 용지 방향에 따라 결정
 
   if (layoutType === '2cut') {
-    rows = 2
-    cols = 1
     actualSlotCount = 2
+    if (isPortrait) {
+      // 세로형: 위 1 / 아래 1 (가로가 긴 형태)
+      rows = 2
+      cols = 1
+    } else {
+      // 가로형: 1줄 2개 (가로 긴 형태)
+      rows = 1
+      cols = 2
+    }
   } else if (layoutType === '6cut') {
-    rows = 2
-    cols = 3
     actualSlotCount = 6
-    isLandscape = true
+    if (isPortrait) {
+      // 세로형: 2×3 (가로 2, 세로 3)
+      rows = 3
+      cols = 2
+    } else {
+      // 가로형: 3×2 (가로 3, 세로 2)
+      rows = 2
+      cols = 3
+    }
+    // isLandscape는 paperOrientation에 따라 결정되므로 여기서 재설정하지 않음
   } else if (layoutType === '4cut') {
+    actualSlotCount = 4
+    // 4cut은 세로형/가로형 모두 2×2
     rows = 2
     cols = 2
-    actualSlotCount = 4
   } else if (layoutType === 'custom') {
     // 커스텀은 동적으로 관리
     actualSlotCount = slotCount || 0
@@ -161,14 +179,26 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
   }, [])
 
   // 현재 페이지의 특정 슬롯 이미지 가져오기
+  // pageIndex prop과 일치하는 페이지의 슬롯만 반환하도록 보장
   const getImageForSlot = useCallback((slotIndex) => {
-    const page = pages.find(p => p.pageIndex === pageIndex)
+    // pageIndex 타입 일치 확인
+    const normalizedPageIndex = typeof pageIndex === 'number' ? pageIndex : Number(pageIndex)
+    
+    const page = pages.find(p => {
+      const pIdx = typeof p.pageIndex === 'number' ? p.pageIndex : Number(p.pageIndex)
+      return pIdx === normalizedPageIndex
+    })
+    
     if (!page) {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('페이지를 찾을 수 없습니다.', { pageIndex, pages })
+        console.warn('페이지를 찾을 수 없습니다.', { 
+          requestedPageIndex: normalizedPageIndex, 
+          availablePages: pages.map(p => p.pageIndex) 
+        })
       }
       return null
     }
+    
     // slotIndex 타입 일치 확인 (숫자로 변환)
     const normalizedSlotIndex = normalizeSlotIndex(slotIndex)
     const slot = page.slots.find(s => {
@@ -214,7 +244,21 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
       
       // Zustand store에 저장 (즉시 미리보기용)
       // 이미지 업로드 시 원본 이미지 URL도 함께 저장
-      setImage(pageIndex, slotIndex, base64Url, '', base64Url)
+      // pageIndex prop이 올바르게 전달되었는지 확인
+      const normalizedPageIndex = typeof pageIndex === 'number' ? pageIndex : Number(pageIndex)
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[A4Canvas] 이미지 업로드:', {
+          pageIndex: normalizedPageIndex,
+          slotIndex,
+          currentPages: useStore.getState().pages.map(p => ({ 
+            pageIndex: p.pageIndex, 
+            slotsCount: p.slots?.length || 0 
+          }))
+        })
+      }
+      
+      setImage(normalizedPageIndex, slotIndex, base64Url, '', base64Url)
 
       // Picture Set이 있으면 자동으로 Storage에 업로드
       const { currentPictureSetId } = useStore.getState()
@@ -230,8 +274,9 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
 
           if (uploadResult.success) {
             // 업로드된 Storage URL로 업데이트
+            const normalizedPageIndex = typeof pageIndex === 'number' ? pageIndex : Number(pageIndex)
             setImage(
-              pageIndex,
+              normalizedPageIndex,
               slotIndex,
               uploadResult.data.url,
               '',
@@ -384,7 +429,10 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
             aspectRatio: isLandscape ? '297/210' : '210/297',
             maxWidth: '800px',
             margin: '0 auto',
-            padding: '56.7px', // 15mm ≈ 56.7px (15 * 3.779527559)
+            paddingTop: isLandscape ? '28.35px' : '56.7px', // 가로형일 때 상단 여백 50% 축소
+            paddingBottom: '56.7px', // 15mm ≈ 56.7px (15 * 3.779527559)
+            paddingLeft: '56.7px',
+            paddingRight: '56.7px',
             transformOrigin: 'center center',
             boxSizing: 'border-box',
           }}
@@ -493,20 +541,14 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                               e.stopPropagation()
                               handleImageClick(slotIndex)
                             }}
-                            className="px-4 py-2 bg-primary text-white rounded-button hover:bg-primary/90 transition-all font-semibold text-sm flex items-center gap-2"
+                            className="px-4 py-2 bg-primary text-white rounded-button hover:bg-primary/90 transition-all font-semibold text-sm"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
                             편집
                           </button>
                           <button
                             onClick={(e) => handleImageDelete(slotIndex, e)}
-                            className="px-4 py-2 bg-red-500 text-white rounded-button hover:bg-red-600 transition-all font-semibold text-sm flex items-center gap-2"
+                            className="px-4 py-2 bg-red-500 text-white rounded-button hover:bg-red-600 transition-all font-semibold text-sm"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
                             삭제
                           </button>
                           {/* 보조설명 버튼 */}
@@ -515,11 +557,8 @@ const A4Canvas = forwardRef(({ layoutType = '4cut', slotCount, pageIndex = 0 }, 
                               e.stopPropagation()
                               setEditingDescription(slotIndex)
                             }}
-                            className="px-4 py-2 bg-green-500 text-white rounded-button hover:bg-green-600 transition-all font-semibold text-sm flex items-center gap-2"
+                            className="px-4 py-2 bg-green-500 text-white rounded-button hover:bg-green-600 transition-all font-semibold text-sm"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
                             보조설명
                           </button>
                           {/* 커스텀 템플릿: 슬롯 크기 조절 버튼 */}

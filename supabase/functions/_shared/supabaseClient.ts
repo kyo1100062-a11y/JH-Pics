@@ -10,6 +10,17 @@ export function createSupabaseClient() {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
+  if (!supabaseUrl || !supabaseServiceKey) {
+    const missing = []
+    if (!supabaseUrl) missing.push('SUPABASE_URL')
+    if (!supabaseServiceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY')
+    
+    throw new Error(
+      `Edge Function 환경 변수가 설정되지 않았습니다: ${missing.join(', ')}\n\n` +
+      `Supabase Dashboard → Edge Functions → Settings에서 환경 변수를 설정해주세요.`
+    )
+  }
+
   return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,

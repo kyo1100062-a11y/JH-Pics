@@ -96,3 +96,4 @@ WHERE tablename IN ('projects', 'picture_sets');
 - 버킷이 생성되었는지 Dashboard에서 확인
 - Storage 정책이 설정되었는지 확인
 
+

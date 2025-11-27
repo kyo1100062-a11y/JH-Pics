@@ -1,4 +1,4 @@
-import { useState, Fragment, useEffect } from 'react'
+import { useState, Fragment, useEffect, useRef } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import useStore from '../store/useStore'
 import useAuthStore from '../store/authStore'
@@ -15,25 +15,65 @@ const ProjectListPage = () => {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   
+  // 중복 실행 방지를 위한 ref
+  const isLoadingRef = useRef(false)
+  const hasShownErrorRef = useRef(false)
+  
   // 프로젝트 목록 불러오기
   useEffect(() => {
+    // 이미 로딩 중이면 실행하지 않음 (React.StrictMode 중복 실행 방지)
+    if (isLoadingRef.current) {
+      return
+    }
+    
     loadProjects()
+    
+    // cleanup 함수: 컴포넌트 언마운트 시 플래그 리셋
+    return () => {
+      isLoadingRef.current = false
+      hasShownErrorRef.current = false
+    }
   }, [])
   
   const loadProjects = async () => {
+    // 이미 로딩 중이면 실행하지 않음
+    if (isLoadingRef.current) {
+      return
+    }
+    
+    isLoadingRef.current = true
+    hasShownErrorRef.current = false
     setLoading(true)
+    
     try {
+      console.log('📋 프로젝트 목록 불러오기 시작')
       const result = await getProjects()
+      
       if (result.success) {
-        setProjects(result.data)
+        console.log('✅ 프로젝트 목록 불러오기 성공:', result.data?.length || 0, '개')
+        setProjects(result.data || [])
       } else {
-        alert(result.error || '프로젝트 목록을 불러오는데 실패했습니다.')
+        console.error('❌ 프로젝트 목록 불러오기 실패:', result.error)
+        // 에러가 이미 표시되지 않았을 때만 표시
+        if (!hasShownErrorRef.current) {
+          hasShownErrorRef.current = true
+          alert(result.error || '프로젝트 목록을 불러오는데 실패했습니다.')
+        }
       }
     } catch (error) {
-      console.error('프로젝트 로드 오류:', error)
-      alert('프로젝트 목록을 불러오는데 실패했습니다.')
+      console.error('❌ 프로젝트 로드 예외 발생:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
+      // 에러가 이미 표시되지 않았을 때만 표시
+      if (!hasShownErrorRef.current) {
+        hasShownErrorRef.current = true
+        alert(`프로젝트 목록을 불러오는데 실패했습니다.\n\n오류: ${error.message || '알 수 없는 오류'}`)
+      }
     } finally {
       setLoading(false)
+      isLoadingRef.current = false
     }
   }
   
@@ -53,18 +93,26 @@ const ProjectListPage = () => {
     
     setSaving(true)
     try {
+      console.log('➕ 프로젝트 생성 시도:', projectName.trim())
       const result = await createProject(projectName.trim())
+      
       if (result.success) {
+        console.log('✅ 프로젝트 생성 성공:', result.data)
         setIsAddModalOpen(false)
         setProjectName('')
         await loadProjects() // 목록 새로고침
         alert('프로젝트가 생성되었습니다.')
       } else {
+        console.error('❌ 프로젝트 생성 실패:', result.error)
         alert(result.error || '프로젝트 생성에 실패했습니다.')
       }
     } catch (error) {
-      console.error('프로젝트 생성 오류:', error)
-      alert('프로젝트 생성에 실패했습니다.')
+      console.error('❌ 프로젝트 생성 예외 발생:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
+      alert(`프로젝트 생성에 실패했습니다.\n\n오류: ${error.message || '알 수 없는 오류'}`)
     } finally {
       setSaving(false)
     }
@@ -112,16 +160,25 @@ const ProjectListPage = () => {
     
     setSaving(true)
     try {
+      console.log('🗑️ 프로젝트 삭제 시도:', { projectId: project.id, projectName: project.name })
       const result = await deleteProject(project.id)
+      
       if (result.success) {
+        console.log('✅ 프로젝트 삭제 성공:', project.id)
         await loadProjects() // 목록 새로고침
         alert('프로젝트가 삭제되었습니다.')
       } else {
+        console.error('❌ 프로젝트 삭제 실패:', result.error)
         alert(result.error || '프로젝트 삭제에 실패했습니다.')
       }
     } catch (error) {
-      console.error('프로젝트 삭제 오류:', error)
-      alert('프로젝트 삭제에 실패했습니다.')
+      console.error('❌ 프로젝트 삭제 예외 발생:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        projectId: project.id
+      })
+      alert(`프로젝트 삭제에 실패했습니다.\n\n오류: ${error.message || '알 수 없는 오류'}`)
     } finally {
       setSaving(false)
     }
@@ -193,16 +250,12 @@ const ProjectListPage = () => {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
-                          {/* 삭제 버튼 (admin만 활성화) */}
+                          {/* 삭제 버튼 */}
                           <button
                             onClick={() => handleDeleteProject(project)}
-                            disabled={saving || !isAdmin}
-                            className={`p-2 border rounded-button transition-all ${
-                              isAdmin
-                                ? 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
-                                : 'bg-gray-500/10 border-gray-500/30 text-gray-500 cursor-not-allowed'
-                            } disabled:opacity-50`}
-                            title={isAdmin ? '삭제' : '관리자만 삭제할 수 있습니다'}
+                            disabled={saving}
+                            className="p-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-button hover:bg-red-500/20 hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="삭제"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

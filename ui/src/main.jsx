@@ -14,15 +14,15 @@ const initAuth = () => {
   authStore.loadUser()
   
   // 인증 상태 변경 리스너
-  onAuthStateChange((event, session) => {
+  onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
       if (session?.user) {
-        authStore.setUser(session.user)
+        await authStore.setUser(session.user)
         authStore.setSession(session)
         authStore.loadUser()
       }
     } else if (event === 'SIGNED_OUT') {
-      authStore.setUser(null)
+      await authStore.setUser(null)
       authStore.setSession(null)
     }
   })
