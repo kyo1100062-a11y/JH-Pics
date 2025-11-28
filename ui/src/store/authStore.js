@@ -1,124 +1,137 @@
-// ============================================
-// 인증 상태 관리 (Zustand)
-// ============================================
 import { create } from 'zustand'
-import { getCurrentUser, getUserRole, isAdmin as checkIsAdmin, isApproved } from '../lib/auth'
+import { supabase } from '../lib/supabase/client'
+
+/**
+ * Auth Store (Zustand)
+ * 
+ * Manages authentication state:
+ * - User session
+ * - User profile (role)
+ * - Login/logout
+ */
 
 const useAuthStore = create((set, get) => ({
-  // 인증 상태
   user: null,
   session: null,
-  profile: null, // profiles 테이블의 프로필 정보
+  profile: null,
   loading: true,
-  initialized: false,
 
-  // 사용자 정보 설정
-  setUser: async (user) => {
-    if (!user) {
-      set({ 
-        user: null,
-        profile: null,
-        isAdmin: false,
-        userRole: null,
-        isApproved: false
-      })
-      return
-    }
-
-    // 프로필 정보 가져오기
-    const role = await getUserRole(user)
-    const admin = await checkIsAdmin(user)
-    const approved = await isApproved(user)
-
-    set({ 
-      user,
-      isAdmin: admin,
-      userRole: role,
-      isApproved: approved
-    })
-  },
-
-  // 프로필 정보 설정
-  setProfile: (profile) => set({ profile }),
-
-  // 세션 설정
-  setSession: (session) => set({ session }),
-
-  // 로딩 상태 설정
-  setLoading: (loading) => set({ loading }),
-
-  // 초기화 완료
-  setInitialized: (initialized) => set({ initialized }),
-
-  // 현재 사용자 정보 가져오기
-  loadUser: async () => {
-    set({ loading: true })
+  // Initialize auth state
+  initialize: async () => {
     try {
-      const result = await getCurrentUser()
-      if (result.success && result.user) {
-        // 프로필 정보 가져오기
-        const role = await getUserRole(result.user)
-        const admin = await checkIsAdmin(result.user)
-        const approved = await isApproved(result.user)
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (error) throw error
 
-        set({ 
-          user: result.user,
-          isAdmin: admin,
-          userRole: role,
-          isApproved: approved,
-          loading: false,
-          initialized: true
-        })
+      if (session?.user) {
+        set({ session, user: session.user })
+        await get().loadProfile(session.user.id)
       } else {
-        set({ 
-          user: null,
-          session: null,
-          profile: null,
-          isAdmin: false,
-          userRole: null,
-          isApproved: false,
-          loading: false,
-          initialized: true
-        })
+        set({ session: null, user: null, profile: null })
       }
     } catch (error) {
-      console.error('사용자 로드 오류:', error)
-      set({ 
-        user: null,
-        session: null,
-        profile: null,
-        isAdmin: false,
-        userRole: null,
-        isApproved: false,
-        loading: false,
-        initialized: true
-      })
+      console.error('Auth initialization error:', error)
+      set({ session: null, user: null, profile: null })
+    } finally {
+      set({ loading: false })
     }
   },
 
-  // 로그아웃
-  logout: async () => {
-    const { signOut } = await import('../lib/auth')
-    const result = await signOut()
-    if (result.success) {
-      set({ 
-        user: null,
-        session: null,
-        profile: null,
-        isAdmin: false,
-        userRole: null,
-        isApproved: false
-      })
+  // Load user profile
+  loadProfile: async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        throw error
+      }
+
+      set({ profile: data || null })
+    } catch (error) {
+      console.error('Profile load error:', error)
+      set({ profile: null })
     }
-    return result
   },
 
-  // 편의 속성
-  isAdmin: false,
-  userRole: null,
-  isApproved: false,
-  isAuthenticated: () => get().user !== null,
+  // Sign in
+  signIn: async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) throw error
+
+      set({ session: data.session, user: data.user })
+      await get().loadProfile(data.user.id)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Sign in error:', error)
+      return { success: false, error: error.message }
+    }
+  },
+
+  // Sign up
+  signUp: async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      })
+
+      if (error) throw error
+
+      return { success: true, user: data.user }
+    } catch (error) {
+      console.error('Sign up error:', error)
+      return { success: false, error: error.message }
+    }
+  },
+
+  // Sign out
+  signOut: async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+
+      set({ session: null, user: null, profile: null })
+    } catch (error) {
+      console.error('Sign out error:', error)
+      throw error
+    }
+  },
+
+  // Check if user is admin
+  isAdmin: () => {
+    const { profile } = get()
+    return profile?.role === 'admin'
+  },
+
+  // Check if authenticated
+  isAuthenticated: () => {
+    return !!get().user
+  },
 }))
+
+// Listen to auth state changes
+supabase.auth.onAuthStateChange(async (event, session) => {
+  const authStore = useAuthStore.getState()
+  
+  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    if (session?.user) {
+      authStore.set({ session, user: session.user })
+      await authStore.loadProfile(session.user.id)
+    }
+  } else if (event === 'SIGNED_OUT') {
+    authStore.set({ session: null, user: null, profile: null })
+  }
+})
 
 export default useAuthStore
 

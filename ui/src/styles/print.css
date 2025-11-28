@@ -1,0 +1,62 @@
+/**
+ * Print CSS
+ * 
+ * Print-specific styles for /print-view page
+ */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+  
+  /* Hide everything except print pages */
+  body > *:not(.print-container) {
+    display: none !important;
+  }
+  
+  .print-container {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+  
+  .print-page {
+    page-break-after: always;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .print-page:last-child {
+    page-break-after: auto;
+  }
+  
+  /* Ensure images print correctly */
+  img {
+    max-width: 100%;
+    height: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Screen view (before printing) */
+@media screen {
+  .print-container {
+    background: #0D1117;
+    padding: 20px;
+    min-height: 100vh;
+  }
+  
+  .print-page {
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+}
+

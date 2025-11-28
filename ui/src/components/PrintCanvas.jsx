@@ -1,37 +1,36 @@
 import { useMemo } from 'react'
 import { getLayout } from '../utils/templateLayout'
-import ImageSlot from './ImageSlot'
+import PrintSlot from './PrintSlot'
 
 /**
- * A4Canvas Component
+ * PrintCanvas Component
  * 
- * Renders A4-sized canvas with:
- * - OuterFrame (15mm padding, 3px solid black)
- * - Metadata section
- * - Image slots grid (based on template)
+ * Print-optimized A4 canvas identical to Editor's A4Canvas.
+ * - Same layout structure
+ * - Same transforms
+ * - Page number support (if totalPages >= 2)
  * 
  * A4 ratio: 210mm × 297mm (≈ 0.707)
  */
 
-function A4Canvas({ template, orientation, metadata, slots, onSlotUpdate, pageData }) {
+function PrintCanvas({ template, orientation, metadata, slots, pageNumber, totalPages, pageData }) {
   // Get layout dimensions
   const { rows, cols } = useMemo(() => {
     return getLayout(template, orientation, pageData)
   }, [template, orientation, pageData])
   
-  // A4 dimensions (maintaining aspect ratio)
-  // A4: 210mm × 297mm = 0.707 aspect ratio
-  // Using max-width approach for responsive design
-  const a4AspectRatio = 210 / 297 // ≈ 0.707
+  // Show page number only if totalPages >= 2
+  const showPageNumber = totalPages >= 2
   
   return (
-    <div className="flex items-center justify-center w-full p-4">
+    <div className="print-page">
       <div
-        className="bg-white shadow-2xl relative"
+        className="bg-white relative"
         style={{
-          width: '100%',
-          maxWidth: '800px',
-          aspectRatio: a4AspectRatio,
+          width: '210mm',
+          height: '297mm',
+          margin: '0 auto',
+          pageBreakAfter: 'always',
         }}
       >
         {/* OuterFrame: 15mm padding, 3px solid black */}
@@ -71,19 +70,29 @@ function A4Canvas({ template, orientation, metadata, slots, onSlotUpdate, pageDa
             }}
           >
             {Array.from({ length: rows * cols }).map((_, index) => (
-              <ImageSlot
+              <PrintSlot
                 key={index}
-                slotIndex={index}
                 slotData={slots[index] || { imageUrl: null, rotation: 0, scale: 1, description: '' }}
-                onUpdate={onSlotUpdate}
               />
             ))}
           </div>
         </div>
+        
+        {/* Page Number (only if totalPages >= 2) - positioned at bottom center of page */}
+        {showPageNumber && (
+          <div
+            className="absolute bottom-0 left-0 right-0 text-center text-sm text-gray-600"
+            style={{
+              paddingBottom: '5mm',
+            }}
+          >
+            {pageNumber} / {totalPages}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-export default A4Canvas
+export default PrintCanvas
 

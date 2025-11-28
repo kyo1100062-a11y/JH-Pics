@@ -97,3 +97,4 @@ console.log('Database:', { data: dbData, error: dbError })
 **해결**: Supabase Dashboard에서 pictures 버킷 생성
 
 
+

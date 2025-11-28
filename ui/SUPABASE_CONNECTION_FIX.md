@@ -216,3 +216,4 @@ AND tablename IN ('projects', 'picture_sets');
 4. **결과 확인**: 모든 항목이 ✅로 표시되는지 확인
 
 
+

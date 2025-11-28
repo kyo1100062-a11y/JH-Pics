@@ -1,15 +1,13 @@
 import TemplateCard from '../components/TemplateCard'
 
 /**
- * HomePage
+ * UploadPage (사진올리기)
  * 
- * Implements home.png wireframe:
- * - Hero section with title and description
- * - Template cards section (2컷, 4컷, 6컷, 커스텀)
- * - Each card with layout preview and orientation buttons
+ * Template selection page - same as HomePage
+ * Following PRD: 홈 화면 및 사진올리기 화면에서 동일 구성
  */
 
-function HomePage() {
+function UploadPage() {
   const templates = [
     { name: '2컷', type: '2cut', layout: '1×2 / 2×1' },
     { name: '4컷', type: '4cut', layout: '2×2' },
@@ -22,10 +20,10 @@ function HomePage() {
       {/* Hero Section */}
       <section className="text-center py-16 px-4">
         <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
-          지혜로운 Pictures
+          사진올리기
         </h1>
         <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-          농업기술센터 보조사업 현장사진 문서를 빠르고 정확하게 만드는 웹 기반 시스템
+          템플릿을 선택하여 문서를 시작하세요
         </p>
       </section>
 
@@ -52,4 +50,5 @@ function HomePage() {
   )
 }
 
-export default HomePage
+export default UploadPage
+
