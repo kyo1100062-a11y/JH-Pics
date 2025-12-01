@@ -40,11 +40,18 @@ function EditorPage() {
   useEffect(() => {
     const fetchBusinesses = async () => {
       try {
-        const businesses = await listBusinesses()
-        setBusinessList(businesses)
+        const result = await listBusinesses()
+        if (result.success) {
+          setBusinessList(result.data || [])
+        } else {
+          console.error('Failed to load businesses:', result.error)
+          // Continue without business list
+          setBusinessList([])
+        }
       } catch (error) {
         console.error('Failed to load businesses:', error)
         // Continue without business list
+        setBusinessList([])
       }
     }
     fetchBusinesses()
@@ -57,11 +64,16 @@ function EditorPage() {
         // Load existing project
         setLoading(true)
         try {
-          const projectData = await loadProjectAPI(id)
-          loadProject(projectData)
+          const result = await loadProjectAPI(id)
+          if (result.success && result.data) {
+            loadProject(result.data)
+          } else {
+            console.error('Failed to load project:', result.error)
+            alert(`프로젝트를 불러오는데 실패했습니다: ${result.error || '알 수 없는 오류'}`)
+          }
         } catch (error) {
           console.error('Failed to load project:', error)
-          alert('프로젝트를 불러오는데 실패했습니다.')
+          alert(`프로젝트를 불러오는데 실패했습니다: ${error.message || error}`)
         } finally {
           setLoading(false)
         }

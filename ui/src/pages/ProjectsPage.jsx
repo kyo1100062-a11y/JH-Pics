@@ -19,14 +19,25 @@ function ProjectsPage() {
 
   // Load businesses
   const loadBusinesses = async () => {
+    console.log('ProjectsPage: Loading businesses...')
     setLoading(true)
     try {
-      const data = await listBusinesses()
-      setBusinesses(data)
+      const result = await listBusinesses()
+      console.log('ProjectsPage: listBusinesses result:', result)
+      if (result.success) {
+        setBusinesses(result.data || [])
+        console.log('ProjectsPage: Businesses loaded:', result.data?.length || 0)
+      } else {
+        console.error('ProjectsPage: Failed to load businesses:', result.error)
+        alert(`사업 목록을 불러오는데 실패했습니다: ${result.error}`)
+        setBusinesses([])
+      }
     } catch (error) {
-      console.error('Failed to load businesses:', error)
-      alert('사업 목록을 불러오는데 실패했습니다.')
+      console.error('ProjectsPage: Exception loading businesses:', error)
+      alert(`사업 목록을 불러오는데 실패했습니다: ${error.message || error}`)
+      setBusinesses([])
     } finally {
+      console.log('ProjectsPage: Setting loading to false')
       setLoading(false)
     }
   }
@@ -54,27 +65,46 @@ function ProjectsPage() {
     }
 
     try {
-      await deleteBusiness(businessId)
-      await loadBusinesses()
-      alert('삭제되었습니다.')
+      const result = await deleteBusiness(businessId)
+      if (result.success) {
+        await loadBusinesses()
+        alert('삭제되었습니다.')
+      } else {
+        alert(`삭제 실패: ${result.error}`)
+      }
     } catch (error) {
       console.error('Failed to delete business:', error)
-      alert(`삭제 실패: ${error.message}`)
+      alert(`삭제 실패: ${error.message || error}`)
     }
   }
 
   // Handle save (add or update)
   const handleSave = async (name) => {
-    if (editingBusiness) {
-      // Update
-      await updateBusiness(editingBusiness.id, name)
-      alert('수정되었습니다.')
-    } else {
-      // Add
-      await addBusiness(name)
-      alert('추가되었습니다.')
+    try {
+      if (editingBusiness) {
+        // Update
+        const result = await updateBusiness(editingBusiness.id, name)
+        if (result.success) {
+          alert('수정되었습니다.')
+        } else {
+          alert(`수정 실패: ${result.error}`)
+          return
+        }
+      } else {
+        // Add
+        const result = await addBusiness(name)
+        if (result.success) {
+          alert('추가되었습니다.')
+        } else {
+          alert(`추가 실패: ${result.error}`)
+          return
+        }
+      }
+      await loadBusinesses()
+    } catch (error) {
+      console.error('Save error:', error)
+      alert(`저장 실패: ${error.message || error}`)
     }
-    await loadBusinesses()
   }
 
   return (

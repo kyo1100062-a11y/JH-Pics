@@ -21,9 +21,21 @@ function LoginPage() {
   }, [initialize])
 
   useEffect(() => {
-    if (isAuthenticated()) {
-      navigate('/')
+    // Check authentication status periodically
+    const checkAuth = () => {
+      if (isAuthenticated()) {
+        console.log('User authenticated, navigating to home')
+        navigate('/')
+      }
     }
+    
+    // Check immediately
+    checkAuth()
+    
+    // Also check after a short delay (in case auth state updates asynchronously)
+    const timer = setTimeout(checkAuth, 500)
+    
+    return () => clearTimeout(timer)
   }, [isAuthenticated, navigate])
 
   const handleSubmit = async (e) => {
@@ -32,15 +44,25 @@ function LoginPage() {
     setLoading(true)
 
     try {
+      console.log('Login form submitted')
       const result = await signIn(email, password)
-      if (result.success) {
-        navigate('/')
+      console.log('Sign in result:', result)
+      
+      if (result && result.success) {
+        console.log('Login successful, navigating...')
+        // Small delay to ensure state is updated
+        setTimeout(() => {
+          navigate('/')
+        }, 100)
       } else {
-        setError(result.error || '로그인에 실패했습니다.')
+        const errorMsg = result?.error || '로그인에 실패했습니다.'
+        console.error('Login failed:', errorMsg)
+        setError(errorMsg)
+        setLoading(false)
       }
     } catch (err) {
-      setError('로그인에 실패했습니다.')
-    } finally {
+      console.error('Login exception:', err)
+      setError(err.message || '로그인에 실패했습니다.')
       setLoading(false)
     }
   }

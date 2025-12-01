@@ -17,14 +17,25 @@ function AdminPage() {
 
   // Load users
   const loadUsers = async () => {
+    console.log('AdminPage: Loading users...')
     setLoading(true)
     try {
-      const data = await listUsers()
-      setUsers(data)
+      const result = await listUsers()
+      console.log('AdminPage: listUsers result:', result)
+      if (result.success) {
+        setUsers(result.data || [])
+        console.log('AdminPage: Users loaded:', result.data?.length || 0)
+      } else {
+        console.error('AdminPage: Failed to load users:', result.error)
+        alert(`사용자 목록을 불러오는데 실패했습니다: ${result.error}`)
+        setUsers([])
+      }
     } catch (error) {
-      console.error('Failed to load users:', error)
-      alert(`사용자 목록을 불러오는데 실패했습니다: ${error.message}`)
+      console.error('AdminPage: Exception loading users:', error)
+      alert(`사용자 목록을 불러오는데 실패했습니다: ${error.message || error}`)
+      setUsers([])
     } finally {
+      console.log('AdminPage: Setting loading to false')
       setLoading(false)
     }
   }
@@ -37,12 +48,16 @@ function AdminPage() {
   const handleRoleChange = async (userId, newRole) => {
     setUpdating(userId)
     try {
-      await updateUserRole(userId, newRole)
-      await loadUsers()
-      alert('권한이 변경되었습니다.')
+      const result = await updateUserRole(userId, newRole)
+      if (result.success) {
+        await loadUsers()
+        alert('권한이 변경되었습니다.')
+      } else {
+        alert(`권한 변경 실패: ${result.error}`)
+      }
     } catch (error) {
       console.error('Failed to update role:', error)
-      alert(`권한 변경 실패: ${error.message}`)
+      alert(`권한 변경 실패: ${error.message || error}`)
     } finally {
       setUpdating(null)
     }

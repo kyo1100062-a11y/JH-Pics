@@ -21,14 +21,25 @@ function ProjectManagementPage() {
 
   // Load projects
   const loadProjects = async () => {
+    console.log('ProjectManagementPage: Loading projects...')
     setLoading(true)
     try {
-      const data = await listProjects()
-      setProjects(data)
+      const result = await listProjects()
+      console.log('ProjectManagementPage: listProjects result:', result)
+      if (result.success) {
+        setProjects(result.data || [])
+        console.log('ProjectManagementPage: Projects loaded:', result.data?.length || 0)
+      } else {
+        console.error('ProjectManagementPage: Failed to load projects:', result.error)
+        alert(`프로젝트 목록을 불러오는데 실패했습니다: ${result.error}`)
+        setProjects([])
+      }
     } catch (error) {
-      console.error('Failed to load projects:', error)
-      alert('프로젝트 목록을 불러오는데 실패했습니다.')
+      console.error('ProjectManagementPage: Exception loading projects:', error)
+      alert(`프로젝트 목록을 불러오는데 실패했습니다: ${error.message || error}`)
+      setProjects([])
     } finally {
+      console.log('ProjectManagementPage: Setting loading to false')
       setLoading(false)
     }
   }
@@ -65,13 +76,17 @@ function ProjectManagementPage() {
 
     setDeleting(true)
     try {
-      await deleteProject(projectId)
-      await loadProjects()
-      setSelectedIds(new Set())
-      alert('삭제되었습니다.')
+      const result = await deleteProject(projectId)
+      if (result.success) {
+        await loadProjects()
+        setSelectedIds(new Set())
+        alert('삭제되었습니다.')
+      } else {
+        alert(`삭제 실패: ${result.error}`)
+      }
     } catch (error) {
       console.error('Failed to delete project:', error)
-      alert(`삭제 실패: ${error.message}`)
+      alert(`삭제 실패: ${error.message || error}`)
     } finally {
       setDeleting(false)
     }
@@ -91,13 +106,17 @@ function ProjectManagementPage() {
 
     setDeleting(true)
     try {
-      await deleteProjects(Array.from(selectedIds))
-      setSelectedIds(new Set())
-      await loadProjects()
-      alert(`${count}개의 항목이 삭제되었습니다.`)
+      const result = await deleteProjects(Array.from(selectedIds))
+      if (result.success) {
+        setSelectedIds(new Set())
+        await loadProjects()
+        alert(`${count}개의 항목이 삭제되었습니다.`)
+      } else {
+        alert(`삭제 실패: ${result.error}`)
+      }
     } catch (error) {
       console.error('Failed to delete projects:', error)
-      alert(`삭제 실패: ${error.message}`)
+      alert(`삭제 실패: ${error.message || error}`)
     } finally {
       setDeleting(false)
     }

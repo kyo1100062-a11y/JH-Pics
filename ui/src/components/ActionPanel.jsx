@@ -54,7 +54,7 @@ function ActionPanel({
       }
       
       // Save to Supabase
-      const savedProject = await saveProject({
+      const result = await saveProject({
         title: metadata.title || '',
         business_name: metadata.business_name || '',
         owner: metadata.owner || '',
@@ -62,13 +62,16 @@ function ActionPanel({
         page_data,
       })
       
-      alert('저장되었습니다!')
-      
-      // Optionally navigate to project management or stay in editor
-      // navigate(`/edit/${savedProject.id}`)
+      if (result.success) {
+        alert('저장되었습니다!')
+        // Optionally navigate to project management or stay in editor
+        // navigate(`/edit/${result.data.id}`)
+      } else {
+        alert(`저장 실패: ${result.error || '알 수 없는 오류'}`)
+      }
     } catch (error) {
       console.error('Save error:', error)
-      alert(`저장 실패: ${error.message}`)
+      alert(`저장 실패: ${error.message || error}`)
     } finally {
       setSaving(false)
     }
